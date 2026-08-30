@@ -74,6 +74,35 @@ type ChartPoint = {
   tasks: number;
 };
 
+type Insight = {
+  id: number;
+  title: string;
+  summary: string;
+  action: string;
+  priority: 'High' | 'Medium';
+};
+
+type AssistantMode = {
+  label: string;
+  detail: string;
+};
+
+type MemoryNode = {
+  id: number;
+  label: string;
+  type: string;
+  summary: string;
+  created_at: string;
+};
+
+type MemoryEdge = {
+  id: number;
+  source: string;
+  target: string;
+  relation: string;
+  created_at: string;
+};
+
 const initialMessages: ChatMessage[] = [
   {
     id: 1,
@@ -132,6 +161,38 @@ const voiceCommands = [
   'Summarize my week',
   'What do you remember from my last chat?',
   'Begin deep work mode',
+  'Draft a message for my team',
+];
+
+const defaultInsights: Insight[] = [
+  {
+    id: 1,
+    title: 'Focus pulse',
+    summary: 'Your momentum is strongest before lunch. Keep high-value tasks in the morning window.',
+    action: 'Launch deep work',
+    priority: 'High',
+  },
+  {
+    id: 2,
+    title: 'Calendar sync',
+    summary: 'Your next key event is lined up for the day. Use the afternoon for follow-up and communication.',
+    action: 'Review schedule',
+    priority: 'High',
+  },
+  {
+    id: 3,
+    title: 'Recovery mode',
+    summary: 'A health reset will keep the streak sustainable. Hydration and a short walk are worth prioritizing.',
+    action: 'Reset recovery',
+    priority: 'Medium',
+  },
+];
+
+const assistantModes: AssistantMode[] = [
+  { label: 'Focus', detail: 'Deep work + no-distraction mode' },
+  { label: 'Travel', detail: 'Quick planning + itinerary flow' },
+  { label: 'Social', detail: 'Message drafting + response prep' },
+  { label: 'Recovery', detail: 'Stretch, rest, and reset guidance' },
 ];
 
 function App() {
@@ -169,7 +230,10 @@ function App() {
     tasksCompleted: 27,
   });
   const [chartSeries, setChartSeries] = useState<ChartPoint[]>(defaultChart);
+  const [insights, setInsights] = useState<Insight[]>(defaultInsights);
+  const [memoryGraph, setMemoryGraph] = useState<{ nodes: MemoryNode[]; edges: MemoryEdge[] }>({ nodes: [], edges: [] });
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [wakeWordActive, setWakeWordActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const reminderAlertsRef = useRef<Record<string, boolean>>({});
 
@@ -229,6 +293,16 @@ function App() {
       }
 
       try {
+        const insightResponse = await fetch('http://localhost:4000/api/assistant/insights');
+        const insightData = await insightResponse.json();
+        if (Array.isArray(insightData.insights) && insightData.insights.length) {
+          setInsights(insightData.insights);
+        }
+      } catch {
+        // keep default insight cards if the API is unavailable
+      }
+
+      try {
         const memoryResponse = await fetch('http://localhost:4000/api/memory');
         const data = await memoryResponse.json();
         if (Array.isArray(data.conversations) && data.conversations.length > 0) {
@@ -237,6 +311,9 @@ function App() {
             { id: index * 2 + 1, role: 'assistant' as const, text: entry.assistant?.text ?? 'Assistant reply' },
           ]);
           setMessages((current) => [...current, ...flattened]);
+        }
+        if (data.graph) {
+          setMemoryGraph(data.graph);
         }
       } catch {
         // ignore memory issues and stay on the starter conversation
@@ -438,6 +515,52 @@ function App() {
     }
   };
 
+  const handleModeSelect = (mode: string) => {
+    const modeMap: Record<string, string> = {
+      Focus: 'Activate deep work mode and keep me on the highest-value tasks without distractions.',
+      Travel: 'Plan my travel flow and keep my schedule organized with a quick itinerary check.',
+      Social: 'Draft a polished message for my team and keep my communication concise and effective.',
+      Recovery: 'I need a recovery block with hydration, movement, and a reset before the next deep work session.',
+    };
+
+    const prompt = modeMap[mode] ?? `Switch to ${mode} mode and help me stay efficient.`;
+    setSummary(`Ultron shifted into ${mode} mode for a faster, more adaptive workflow.`);
+    handleSend(prompt);
+  };
+
+  const handleAssistantAction = async (action: 'calendar' | 'gmail' | 'whatsapp') => {
+    const endpointMap = {
+      calendar: 'http://localhost:4000/api/actions/calendar',
+      gmail: 'http://localhost:4000/api/actions/gmail',
+      whatsapp: 'http://localhost:4000/api/actions/whatsapp',
+    };
+
+    try {
+      const response = await fetch(endpointMap[action], {
+        method: action === 'calendar' ? 'GET' : 'POST',
+        headers: action === 'calendar' ? undefined : { 'Content-Type': 'application/json' },
+        body: action === 'calendar' ? undefined : JSON.stringify({
+          name: profile.name,
+          objective: action === 'gmail' ? 'progress update' : 'check-in',
+          recipient: action === 'whatsapp' ? 'team' : undefined,
+        }),
+      });
+
+      const data = await response.json();
+      const message = data.draft || data.message || data.suggestion || 'Action ready.';
+      setMessages((current) => [
+        ...current,
+        { id: Date.now(), role: 'assistant', text: `Action ready: ${message}` },
+      ]);
+      setSummary(`Ultron prepared a ${action.toUpperCase()} action for faster execution.`);
+    } catch {
+      setMessages((current) => [
+        ...current,
+        { id: Date.now(), role: 'assistant', text: 'The action system is ready. I can help you prepare the next step directly.' },
+      ]);
+    }
+  };
+
   const handleVoice = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -461,6 +584,17 @@ function App() {
         .trim();
 
       if (transcript) {
+        const spoken = transcript.toLowerCase();
+        const wakeWordDetected = spoken.includes('hey ultron') || spoken.includes('ultron');
+        setWakeWordActive(wakeWordDetected);
+
+        if (wakeWordDetected) {
+          const cleaned = transcript.replace(/hey\s*ultron|ultron/gi, '').trim();
+          setInput(cleaned || 'What can you do for me?');
+          setTimeout(() => handleSend(cleaned || 'What can you do for me?'), 250);
+          return;
+        }
+
         setInput(transcript);
         setTimeout(() => handleSend(transcript), 250);
       }
@@ -552,6 +686,9 @@ function App() {
             <div className="avatar-pill">
               <UserRound size={16} />
               <span>{notificationsEnabled ? 'Alerts on' : 'Alerts off'}</span>
+            </div>
+            <div className={`wake-pill ${wakeWordActive ? 'active' : ''}`}>
+              {wakeWordActive ? 'Wake word ready' : 'Wake word idle'}
             </div>
           </div>
         </header>
@@ -645,6 +782,67 @@ function App() {
               </div>
             </div>
           </div>
+        </section>
+
+        <section className="panel intelligence-panel">
+          <div className="panel-header">
+            <Sparkles size={16} />
+            <span>AI command center</span>
+          </div>
+          <div className="mode-row">
+            {assistantModes.map((mode) => (
+              <button key={mode.label} className="mode-chip" onClick={() => handleModeSelect(mode.label)}>
+                <strong>{mode.label}</strong>
+                <span>{mode.detail}</span>
+              </button>
+            ))}
+          </div>
+          <div className="insight-grid">
+            {insights.map((insight) => (
+              <div key={insight.id} className="insight-card">
+                <div className="insight-head">
+                  <span className={`priority ${insight.priority.toLowerCase()}`}>{insight.priority}</span>
+                  <h4>{insight.title}</h4>
+                </div>
+                <p>{insight.summary}</p>
+                <button onClick={() => handleSend(insight.action)}>{insight.action}</button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel action-panel">
+          <div className="panel-header">
+            <CalendarDays size={16} />
+            <span>Assistant actions</span>
+          </div>
+          <div className="action-grid">
+            <button className="action-card" onClick={() => handleAssistantAction('calendar')}>
+              <strong>Calendar block</strong>
+              <span>Create a focus plan and schedule it.</span>
+            </button>
+            <button className="action-card" onClick={() => handleAssistantAction('gmail')}>
+              <strong>Draft Gmail</strong>
+              <span>Write a polished status update fast.</span>
+            </button>
+            <button className="action-card" onClick={() => handleAssistantAction('whatsapp')}>
+              <strong>WhatsApp note</strong>
+              <span>Send a quick check-in message.</span>
+            </button>
+          </div>
+          {memoryGraph.nodes.length > 0 && (
+            <div className="memory-graph">
+              <div className="panel-header">
+                <BrainCircuit size={16} />
+                <span>Memory graph</span>
+              </div>
+              <div className="graph-tags">
+                {memoryGraph.nodes.slice(0, 8).map((node) => (
+                  <span key={node.id} className="graph-tag">{node.label}</span>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="lower-grid">

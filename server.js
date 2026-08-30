@@ -72,6 +72,26 @@ const ensureSchema = () => {
     )
   `).run();
 
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS memory_graph_nodes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      label TEXT NOT NULL,
+      type TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS memory_graph_edges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL,
+      target TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `).run();
+
   const reminderColumns = db.prepare('PRAGMA table_info(reminders)').all();
   const reminderNames = reminderColumns.map((column) => column.name);
 
@@ -157,8 +177,115 @@ const getMemory = () => {
   return { conversations };
 };
 
+const getMemoryGraph = () => {
+  const nodes = db.prepare('SELECT * FROM memory_graph_nodes ORDER BY id DESC LIMIT 24').all();
+  const edges = db.prepare('SELECT * FROM memory_graph_edges ORDER BY id DESC LIMIT 60').all();
+  return { nodes, edges };
+};
+
+const upsertMemoryGraph = (message) => {
+  const profile = getProfile();
+  const text = String(message || '').trim();
+  if (!text) return;
+
+  const relevantWords = [...new Set(text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 3)
+    .filter((word) => !['this','that','with','from','what','when','your','boss','ultron','about','into','have','will','they','them','into','more','work','time','plan','today','week'].includes(word)))];
+
+  const seedLabels = [profile.name, 'focus', 'schedule', 'health', 'routine', 'planning', ...relevantWords].filter(Boolean);
+
+  const insertNode = (label, type, summary) => {
+    const existing = db.prepare('SELECT id FROM memory_graph_nodes WHERE label = ? AND type = ? LIMIT 1').get(label, type);
+    if (existing) return existing.id;
+
+    const result = db.prepare('INSERT INTO memory_graph_nodes (label, type, summary, created_at) VALUES (?, ?, ?, ?)')
+      .run(label, type, summary, new Date().toISOString());
+    return result.lastInsertRowid;
+  };
+
+  const addEdge = (source, target, relation) => {
+    if (!source || !target || source === target) return;
+    const existing = db.prepare('SELECT id FROM memory_graph_edges WHERE source = ? AND target = ? AND relation = ? LIMIT 1').get(source, target, relation);
+    if (!existing) {
+      db.prepare('INSERT INTO memory_graph_edges (source, target, relation, created_at) VALUES (?, ?, ?, ?)')
+        .run(String(source), String(target), relation, new Date().toISOString());
+    }
+  };
+
+  const profileNode = insertNode(profile.name || 'Boss', 'person', 'Primary user profile context');
+  const messageNode = insertNode('conversation', 'topic', `Recent assistant memory around: ${text.slice(0, 120)}`);
+
+  seedLabels.forEach((label) => {
+    const nodeId = insertNode(label, label === profile.name || label === 'conversation' ? 'person' : 'topic', `Context memory for ${label}`);
+    addEdge(String(profileNode), String(nodeId), 'remembers');
+  });
+
+  addEdge(String(profileNode), String(messageNode), 'discusses');
+  addEdge(String(messageNode), String(profileNode), 'reflects');
+
+  relevantWords.forEach((word) => {
+    const wordId = insertNode(word, 'topic', `Recent focus topic: ${word}`);
+    addEdge(String(messageNode), String(wordId), 'mentions');
+    addEdge(String(profileNode), String(wordId), 'tracks');
+  });
+};
+
+const createAssistantInsights = () => {
+  const profile = getProfile();
+  const habits = getHabits();
+  const events = getEvents();
+  const reminders = getReminders();
+  const completed = habits.filter((habit) => habit.done).length;
+  const completionRate = habits.length ? Math.round((completed / habits.length) * 100) : 0;
+  const nextEvent = events[0];
+  const nextReminder = reminders.find((reminder) => reminder.active) || reminders[0];
+  const wakeGoal = Number(profile.focus_target || 90);
+
+  return [
+    {
+      id: 1,
+      title: 'Focus pulse',
+      summary: `Your personal rhythm is strong. You are currently trending at ${Math.max(70, Math.min(98, wakeGoal))}% focus readiness before your key work blocks.`,
+      action: 'Launch deep work',
+      priority: 'High',
+    },
+    {
+      id: 2,
+      title: 'Priority sync',
+      summary: nextEvent ? `Your next anchor event is ${nextEvent.title} at ${nextEvent.time}. Keep the next work block aligned with it.` : 'No upcoming schedule event is set yet. I can add one in seconds.',
+      action: 'Review schedule',
+      priority: 'High',
+    },
+    {
+      id: 3,
+      title: 'Routine health',
+      summary: `You have completed ${completed} of ${habits.length || 0} tracked routines. The current routine supports a steady ${Math.max(65, completionRate)}% momentum score.`,
+      action: 'Reset recovery',
+      priority: 'Medium',
+    },
+    {
+      id: 4,
+      title: 'Smart reminder',
+      summary: nextReminder ? `Your next reminder is ${nextReminder.title} at ${nextReminder.time}. I can keep it silent, timed, and action-driven.` : 'No active reminder is set. I can create one for your next milestone.',
+      action: 'Schedule reminder',
+      priority: 'Medium',
+    },
+  ];
+};
+
 const resolveCommand = (message) => {
   const normalized = message.toLowerCase();
+
+  if (normalized.includes('deep work') || normalized.includes('focus mode') || normalized.includes('begin deep work')) {
+    return 'Deep work mode is live. I am prioritizing your highest-value tasks, clearing distractions, and keeping your next decision set to impact.';
+  }
+
+  if (normalized.includes('draft a message') || normalized.includes('draft message') || normalized.includes('write a message')) {
+    return 'Draft message ready: “Hi, I am aligned on the immediate priorities and I will move on the next action after the current focus block.”';
+  }
 
   if (normalized.includes('plan my day') || normalized.includes('plan my schedule') || normalized.includes('plan')) {
     return 'Boss, here is the plan for today: 1) deep work block at 9:00, 2) high-priority follow-up and communication, 3) health reset and end-of-day review.';
@@ -182,12 +309,20 @@ const resolveCommand = (message) => {
     return 'I can route the call request once you confirm the contact and the preferred method. I will keep the action brief and direct.';
   }
 
-  if (normalized.includes('voice') || normalized.includes('wake')) {
+  if (normalized.includes('voice') || normalized.includes('wake') || normalized.includes('hey ultron')) {
     return 'Voice mode is live. Say “Hey Ultron” and I will respond with a direct, concise update.';
   }
 
   if (normalized.includes('habit') || normalized.includes('health') || normalized.includes('sleep')) {
     return 'Your routine is being tracked for consistency. Aim for a 7-hour sleep target, a hydration check, and at least one focus block before lunch.';
+  }
+
+  if (normalized.includes('image prompt') || normalized.includes('generate image') || normalized.includes('art prompt')) {
+    return 'Image prompt ready: “Ultra-realistic premium personal AI assistant, futuristic glass UI, cinematic lighting, cyberpunk efficiency, high-detail product render, polished modern aesthetic.”';
+  }
+
+  if (normalized.includes('assistant') || normalized.includes('boss')) {
+    return 'I am Ultron, your direct personal assistant. I stay focused on your routine, priorities, and decisions without wasting time.';
   }
 
   return null;
@@ -323,7 +458,38 @@ app.get('/api/dashboard', (_req, res) => {
 });
 
 app.get('/api/memory', (_req, res) => {
-  res.json(getMemory());
+  res.json({ ...getMemory(), graph: getMemoryGraph() });
+});
+
+app.get('/api/memory/graph', (_req, res) => {
+  res.json(getMemoryGraph());
+});
+
+app.get('/api/assistant/insights', (_req, res) => {
+  res.json({ insights: createAssistantInsights() });
+});
+
+app.get('/api/actions/calendar', (_req, res) => {
+  const profile = getProfile();
+  const nextEvent = getEvents()[0];
+  const calendarAction = {
+    title: 'Calendar action',
+    summary: nextEvent ? `Your next event is ${nextEvent.title} at ${nextEvent.time}.` : 'No event is scheduled yet. I can create one right away.',
+    suggestion: `Create a focus block for ${profile.name} at 09:00 and a follow-up check at 15:00.`,
+  };
+  res.json(calendarAction);
+});
+
+app.post('/api/actions/gmail', (req, res) => {
+  const { name = 'team', objective = 'project update' } = req.body || {};
+  const draft = `Subject: Quick update on ${objective}\n\nHi ${name},\n\nI wanted to share a quick progress update on the current workstream. I am aligned on the next priorities and will keep momentum moving forward.\n\nBest,\n${getProfile().name}`;
+  res.json({ draft, mode: 'gmail' });
+});
+
+app.post('/api/actions/whatsapp', (req, res) => {
+  const { recipient = 'team', objective = 'check-in' } = req.body || {};
+  const message = `Hi ${recipient}, I am on track for the ${objective}. I will keep things moving and share the next update soon.`;
+  res.json({ message, mode: 'whatsapp' });
 });
 
 app.post('/api/profile', (req, res) => {
@@ -440,6 +606,8 @@ app.post('/api/chat', async (req, res) => {
     .run('user', message.trim(), now);
   db.prepare('INSERT INTO chat_memory (role, text, created_at) VALUES (?, ?, ?)')
     .run('assistant', reply, now);
+
+  upsertMemoryGraph(message.trim());
 
   db.prepare('UPDATE profile SET summary = ? WHERE id = 1').run(`Ultron is tracking ${getHabits().length} routines and keeping ${getEvents().length} upcoming events in sync.`);
 

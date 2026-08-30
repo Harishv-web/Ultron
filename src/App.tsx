@@ -103,6 +103,16 @@ type MemoryEdge = {
   created_at: string;
 };
 
+type AgentTask = {
+  id: number;
+  title: string;
+  description: string;
+  due_at: string;
+  status: string;
+  automation: string;
+  result: string;
+};
+
 const initialMessages: ChatMessage[] = [
   {
     id: 1,
@@ -232,6 +242,8 @@ function App() {
   const [chartSeries, setChartSeries] = useState<ChartPoint[]>(defaultChart);
   const [insights, setInsights] = useState<Insight[]>(defaultInsights);
   const [memoryGraph, setMemoryGraph] = useState<{ nodes: MemoryNode[]; edges: MemoryEdge[] }>({ nodes: [], edges: [] });
+  const [tasks, setTasks] = useState<AgentTask[]>([]);
+  const [taskDraft, setTaskDraft] = useState({ title: 'Prepare focus review', description: 'Review priorities and prepare the next action list.', dueAt: new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16), automation: 'scheduled' });
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [wakeWordActive, setWakeWordActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -317,6 +329,16 @@ function App() {
         }
       } catch {
         // ignore memory issues and stay on the starter conversation
+      }
+
+      try {
+        const tasksResponse = await fetch('http://localhost:4000/api/tasks');
+        const tasksData = await tasksResponse.json();
+        if (Array.isArray(tasksData.tasks)) {
+          setTasks(tasksData.tasks);
+        }
+      } catch {
+        // keep empty task list if the API is unavailable
       }
 
       if ('Notification' in window) {
@@ -558,6 +580,59 @@ function App() {
         ...current,
         { id: Date.now(), role: 'assistant', text: 'The action system is ready. I can help you prepare the next step directly.' },
       ]);
+    }
+  };
+
+  const handleTaskCreate = async () => {
+    const payload = {
+      title: taskDraft.title || 'New agent task',
+      description: taskDraft.description || 'Automate the next action with a focused workflow.',
+      dueAt: taskDraft.dueAt ? new Date(taskDraft.dueAt).toISOString() : new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      automation: taskDraft.automation || 'scheduled',
+    };
+
+    try {
+      const response = await fetch('http://localhost:4000/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (Array.isArray(data.tasks)) {
+        setTasks(data.tasks);
+      }
+    } catch {
+      setTasks((current) => [
+        ...current,
+        {
+          id: Date.now(),
+          title: payload.title,
+          description: payload.description,
+          due_at: payload.dueAt,
+          status: 'pending',
+          automation: payload.automation,
+          result: '',
+        },
+      ]);
+    }
+
+    setTaskDraft({
+      title: 'Prepare focus review',
+      description: 'Review priorities and prepare the next action list.',
+      dueAt: new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16),
+      automation: 'scheduled',
+    });
+  };
+
+  const handleTaskComplete = async (taskId: number) => {
+    try {
+      const response = await fetch(`http://localhost:4000/api/tasks/${taskId}/complete`, { method: 'POST' });
+      const data = await response.json();
+      if (Array.isArray(data.tasks)) {
+        setTasks(data.tasks);
+      }
+    } catch {
+      setTasks((current) => current.map((task) => task.id === taskId ? { ...task, status: 'completed', result: 'Completed manually.' } : task));
     }
   };
 
@@ -843,6 +918,59 @@ function App() {
               </div>
             </div>
           )}
+        </section>
+
+        <section className="panel automation-panel">
+          <div className="panel-header">
+            <Zap size={16} />
+            <span>Agent automation</span>
+          </div>
+          <div className="task-form">
+            <input
+              value={taskDraft.title}
+              onChange={(event) => setTaskDraft((current) => ({ ...current, title: event.target.value }))}
+              placeholder="Task title"
+            />
+            <textarea
+              rows={2}
+              value={taskDraft.description}
+              onChange={(event) => setTaskDraft((current) => ({ ...current, description: event.target.value }))}
+              placeholder="Task description"
+            />
+            <div className="task-form-row">
+              <input
+                type="datetime-local"
+                value={taskDraft.dueAt}
+                onChange={(event) => setTaskDraft((current) => ({ ...current, dueAt: event.target.value }))}
+              />
+              <select
+                value={taskDraft.automation}
+                onChange={(event) => setTaskDraft((current) => ({ ...current, automation: event.target.value }))}
+              >
+                <option value="scheduled">Scheduled</option>
+                <option value="triggered">Triggered</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+            <button className="save-btn" onClick={handleTaskCreate}>Add scheduled task</button>
+          </div>
+          <div className="task-list">
+            {tasks.length === 0 ? (
+              <p className="compact">No automated tasks yet. Add one to let Ultron handle the next action.</p>
+            ) : tasks.map((task) => (
+              <div key={task.id} className="task-item">
+                <div>
+                  <strong>{task.title}</strong>
+                  <p>{task.description}</p>
+                </div>
+                <div className="task-meta">
+                  <span>{task.status}</span>
+                  <small>{new Date(task.due_at).toLocaleString()}</small>
+                  <button onClick={() => handleTaskComplete(task.id)}>Complete</button>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="lower-grid">

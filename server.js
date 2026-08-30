@@ -92,6 +92,18 @@ const ensureSchema = () => {
     )
   `).run();
 
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS agent_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      due_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      automation TEXT NOT NULL DEFAULT 'scheduled',
+      result TEXT NOT NULL DEFAULT ''
+    )
+  `).run();
+
   const reminderColumns = db.prepare('PRAGMA table_info(reminders)').all();
   const reminderNames = reminderColumns.map((column) => column.name);
 
@@ -181,6 +193,20 @@ const getMemoryGraph = () => {
   const nodes = db.prepare('SELECT * FROM memory_graph_nodes ORDER BY id DESC LIMIT 24').all();
   const edges = db.prepare('SELECT * FROM memory_graph_edges ORDER BY id DESC LIMIT 60').all();
   return { nodes, edges };
+};
+
+const getTasks = () => db.prepare('SELECT * FROM agent_tasks ORDER BY due_at ASC').all();
+
+const runScheduledTasks = () => {
+  const now = Date.now();
+  const tasks = getTasks().filter((task) => task.status === 'pending' && new Date(task.due_at).getTime() <= now);
+
+  tasks.forEach((task) => {
+    db.prepare('UPDATE agent_tasks SET status = ?, result = ? WHERE id = ?')
+      .run('completed', `Executed automatically at ${new Date().toISOString()}.`, task.id);
+  });
+
+  return tasks;
 };
 
 const upsertMemoryGraph = (message) => {
@@ -469,6 +495,36 @@ app.get('/api/assistant/insights', (_req, res) => {
   res.json({ insights: createAssistantInsights() });
 });
 
+app.get('/api/tasks', (_req, res) => {
+  res.json({ tasks: getTasks() });
+});
+
+app.post('/api/tasks', (req, res) => {
+  const { title, description, dueAt, automation } = req.body || {};
+  const safeTitle = String(title || 'New agent task');
+  const safeDescription = String(description || 'Keep this task moving with a focused automation flow.');
+  const safeDueAt = String(dueAt || new Date(Date.now() + 60 * 60 * 1000).toISOString());
+  const safeAutomation = String(automation || 'scheduled');
+
+  db.prepare('INSERT INTO agent_tasks (title, description, due_at, status, automation, result) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(safeTitle, safeDescription, safeDueAt, 'pending', safeAutomation, '');
+
+  res.json({ tasks: getTasks() });
+});
+
+app.post('/api/tasks/:id/complete', (req, res) => {
+  const taskId = Number(req.params.id);
+  const task = db.prepare('SELECT * FROM agent_tasks WHERE id = ?').get(taskId);
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found.' });
+  }
+
+  db.prepare('UPDATE agent_tasks SET status = ?, result = ? WHERE id = ?')
+    .run('completed', `Completed manually at ${new Date().toISOString()}.`, taskId);
+
+  return res.json({ tasks: getTasks() });
+});
+
 app.get('/api/actions/calendar', (_req, res) => {
   const profile = getProfile();
   const nextEvent = getEvents()[0];
@@ -638,6 +694,13 @@ app.get('/api/files', (_req, res) => {
 });
 
 app.use('/uploads', express.static(uploadsDir));
+
+setInterval(() => {
+  const tasks = runScheduledTasks();
+  if (tasks.length > 0) {
+    console.log(`Executed ${tasks.length} agent task(s).`);
+  }
+}, 60000);
 
 app.listen(port, () => {
   console.log(`Ultron server running on http://localhost:${port}`);

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ultron</string>
+    <string name="title_activity_main">Ultron</string>
+    <string name="package_name">com.ultron.app</string>
+    <string name="custom_url_scheme">com.ultron.app</string>
+</resources>

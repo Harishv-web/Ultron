@@ -411,6 +411,76 @@ button {
   color: #bfd0ee;
 }
 
+.automation-panel {
+  margin-bottom: 22px;
+}
+
+.task-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.task-form input,
+.task-form textarea,
+.task-form select {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.56);
+  color: #edf6ff;
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+
+.task-form-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 10px;
+}
+
+.task-list {
+  display: grid;
+  gap: 12px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.52);
+  border-radius: 14px;
+}
+
+.task-item strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.task-item p {
+  margin: 0;
+  color: #bfd0ee;
+  font-size: 0.78rem;
+}
+
+.task-meta {
+  display: grid;
+  gap: 8px;
+  text-align: right;
+  font-size: 0.72rem;
+  color: #dfeeff;
+}
+
+.task-meta button {
+  border: 1px solid rgba(79, 124, 255, 0.35);
+  background: rgba(79, 124, 255, 0.12);
+  color: #dfeeff;
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
 .memory-graph {
   margin-top: 18px;
 }

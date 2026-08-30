@@ -1,0 +1,17 @@
+{
+  "name": "Ultron AI",
+  "short_name": "Ultron",
+  "description": "Single-user AI personal assistant for planning, focus, and daily life management.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
+  "icons": [
+    {
+      "src": "/ultron-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

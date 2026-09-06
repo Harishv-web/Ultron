@@ -3,24 +3,31 @@ import {
   Activity,
   Bell,
   BrainCircuit,
+  CheckCircle2,
   CalendarDays,
   ChevronRight,
+  CircleDot,
   Clock3,
+  Cpu,
   Download,
   FileText,
   Globe,
+  ListChecks,
   MessageSquareText,
   Mic,
   MoonStar,
   Phone,
+  Send,
   ShieldCheck,
   Sparkles,
   Target,
+  Timer,
   TrendingUp,
   Upload,
   UserRound,
   Volume2,
   Wand2,
+  Wifi,
   Zap,
 } from 'lucide-react';
 import { registerPlugin } from '@capacitor/core';
@@ -130,6 +137,14 @@ type GoogleStatus = {
   email?: string;
 };
 
+type LiveActivity = {
+  id: number;
+  label: string;
+  detail: string;
+  time: string;
+  state: 'done' | 'working' | 'queued';
+};
+
 const initialMessages: ChatMessage[] = [
   {
     id: 1,
@@ -222,6 +237,15 @@ const assistantModes: AssistantMode[] = [
   { label: 'Recovery', detail: 'Stretch, rest, and reset guidance' },
 ];
 
+const professionalWorkflows = [
+  { label: 'Executive briefing', prompt: 'Prepare a concise executive briefing from my priorities, schedule, and open tasks.' },
+  { label: 'Inbox zero plan', prompt: 'Create an inbox zero plan and draft responses for the most important messages.' },
+  { label: 'Meeting prep', prompt: 'Prepare me for my next meeting with an agenda, talking points, and follow-up checklist.' },
+  { label: 'Weekly review', prompt: 'Run a professional weekly review with wins, risks, priorities, and next actions.' },
+  { label: 'Research sprint', prompt: 'Break my research goal into a focused sprint with sources, milestones, and a deliverable.' },
+  { label: 'Personal reset', prompt: 'Create a realistic reset plan for my energy, health, home, and focus.' },
+];
+
 function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState('');
@@ -271,6 +295,14 @@ function App() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [smsMessage, setSmsMessage] = useState('');
   const [gmailDraft, setGmailDraft] = useState({ to: '', subject: 'Ultron progress update', body: 'Hi,\n\nI wanted to share a quick progress update on the current workstream.\n\nBest,' });
+  const [isThinking, setIsThinking] = useState(false);
+  const [liveTime, setLiveTime] = useState(new Date());
+  const [activeWorkspace, setActiveWorkspace] = useState('Command center');
+  const [liveActivity, setLiveActivity] = useState<LiveActivity[]>([
+    { id: 1, label: 'Context loaded', detail: 'Profile, routines, and priorities are in memory.', time: 'now', state: 'done' },
+    { id: 2, label: 'Calendar watch', detail: 'Monitoring schedule conflicts and upcoming events.', time: 'now', state: 'working' },
+    { id: 3, label: 'Focus plan queued', detail: 'Ready to build your next high-value action list.', time: 'next', state: 'queued' },
+  ]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const reminderAlertsRef = useRef<Record<string, boolean>>({});
   const wakeWordRef = useRef(false);
@@ -387,6 +419,20 @@ function App() {
     const snapshot = { profile, habits: habitList, events: eventList, reminders, summary };
     localStorage.setItem('ultron-dashboard', JSON.stringify(snapshot));
   }, [profile, habitList, eventList, reminders, summary]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setLiveTime(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setLiveActivity((current) => current.map((item) => item.state === 'working'
+        ? { ...item, time: `${liveTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` }
+        : item));
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [liveTime]);
 
   useEffect(() => {
     if (!('Notification' in window)) return;
@@ -536,6 +582,11 @@ function App() {
     const userMessage: ChatMessage = { id: Date.now(), role: 'user', text: trimmed };
     setMessages((current) => [...current, userMessage]);
     setInput('');
+    setIsThinking(true);
+    setLiveActivity((current) => [
+      { id: Date.now(), label: 'Reasoning', detail: `Working through: ${trimmed.slice(0, 72)}`, time: 'now', state: 'working' },
+      ...current.filter((item) => item.state !== 'working').slice(0, 3),
+    ]);
 
     try {
       const response = await fetch('http://localhost:4000/api/chat', {
@@ -552,6 +603,10 @@ function App() {
       };
 
       setMessages((current) => [...current, assistantMessage]);
+      setLiveActivity((current) => [
+        { id: Date.now(), label: 'Response ready', detail: 'Answer delivered with your personal context.', time: 'now', state: 'done' },
+        ...current.filter((item) => item.state !== 'working').slice(0, 3),
+      ]);
       speakText(assistantMessage.text);
       sendNotification('Ultron update', assistantMessage.text);
 
@@ -565,7 +620,13 @@ function App() {
         text: `Understood, boss. I can help with “${trimmed}” and keep the response direct, precise, and action-focused.`,
       };
       setMessages((current) => [...current, fallback]);
+      setLiveActivity((current) => [
+        { id: Date.now(), label: 'Offline assist', detail: 'Using the local response mode while the API reconnects.', time: 'now', state: 'done' },
+        ...current.filter((item) => item.state !== 'working').slice(0, 3),
+      ]);
       speakText(fallback.text);
+    } finally {
+      setIsThinking(false);
     }
   };
 
@@ -934,6 +995,59 @@ function App() {
           </div>
         </section>
 
+        <section className="live-cockpit panel">
+          <div className="live-cockpit-head">
+            <div>
+              <p className="eyebrow">Realtime intelligence layer</p>
+              <h3>Ultron is working with you</h3>
+              <p className="compact">A live operating view of your assistant, priorities, and next best action.</p>
+            </div>
+            <div className="live-clock">
+              <span className="live-dot" />
+              <strong>{liveTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>
+              <small>{liveTime.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</small>
+            </div>
+          </div>
+          <div className="cockpit-grid">
+            <div className="ai-orb-card">
+              <div className={`ai-orb ${isThinking ? 'thinking' : ''}`}>
+                <div className="orb-core"><Cpu size={28} /></div>
+                <span className="orb-ring ring-one" />
+                <span className="orb-ring ring-two" />
+              </div>
+              <div className="orb-status">
+                <strong>{isThinking ? 'Thinking through your request' : 'Ready for your next command'}</strong>
+                <span><Wifi size={13} /> Secure assistant channel · {activeWorkspace}</span>
+              </div>
+              <div className="workspace-tabs">
+                {['Command center', 'Executive', 'Personal', 'Deep work'].map((workspace) => (
+                  <button key={workspace} className={activeWorkspace === workspace ? 'workspace-tab active' : 'workspace-tab'} onClick={() => setActiveWorkspace(workspace)}>
+                    {workspace}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="live-feed">
+              <div className="feed-header"><span><CircleDot size={14} /> Live activity</span><small>updates automatically</small></div>
+              {liveActivity.map((item) => (
+                <div className="feed-item" key={item.id}>
+                  <span className={`feed-icon ${item.state}`}>
+                    {item.state === 'done' ? <CheckCircle2 size={14} /> : item.state === 'working' ? <Activity size={14} /> : <Timer size={14} />}
+                  </span>
+                  <div><strong>{item.label}</strong><p>{item.detail}</p></div>
+                  <time>{item.time}</time>
+                </div>
+              ))}
+            </div>
+            <div className="next-action-card">
+              <span className="next-action-label"><Sparkles size={14} /> Recommended next action</span>
+              <h4>Protect your next focus block</h4>
+              <p>Silence distractions, finish the priority review, and leave a clean handoff for your afternoon.</p>
+              <button className="send-btn" onClick={() => handleSend('Start a 45-minute focus block and give me the exact first three actions.')}>Start focus block <Send size={14} /></button>
+            </div>
+          </div>
+        </section>
+
         <section className="feature-grid">
           {featureCards.map(({ icon: Icon, label, detail }) => (
             <div key={label} className="feature-card">
@@ -1077,6 +1191,17 @@ function App() {
                 <p>{insight.summary}</p>
                 <button onClick={() => handleSend(insight.action)}>{insight.action}</button>
               </div>
+            ))}
+          </div>
+          <div className="workflow-header">
+            <div><span className="eyebrow">Professional workflows</span><h4>Delegate the work, not just the question</h4></div>
+            <span className="workflow-badge"><ListChecks size={13} /> Ready to run</span>
+          </div>
+          <div className="workflow-grid">
+            {professionalWorkflows.map((workflow) => (
+              <button key={workflow.label} className="workflow-card" onClick={() => handleSend(workflow.prompt)}>
+                <span>{workflow.label}</span><ChevronRight size={15} />
+              </button>
             ))}
           </div>
         </section>

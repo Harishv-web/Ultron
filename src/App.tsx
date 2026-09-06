@@ -23,6 +23,17 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react';
+import { registerPlugin } from '@capacitor/core';
+
+type NativeControlsPlugin = {
+  call(options: { phoneNumber: string }): Promise<void>;
+  sendSms(options: { phoneNumber: string; message: string }): Promise<void>;
+  lockScreen(): Promise<void>;
+  scheduleReminder(options: { id: number; title: string; note: string; time: string; frequency: string }): Promise<void>;
+  cancelReminder(options: { id: number }): Promise<void>;
+};
+
+const NativeControls = registerPlugin<NativeControlsPlugin>('NativeControls');
 
 type ChatMessage = {
   id: number;
@@ -111,6 +122,12 @@ type AgentTask = {
   status: string;
   automation: string;
   result: string;
+};
+
+type GoogleStatus = {
+  configured: boolean;
+  connected: boolean;
+  email?: string;
 };
 
 const initialMessages: ChatMessage[] = [
@@ -246,8 +263,17 @@ function App() {
   const [taskDraft, setTaskDraft] = useState({ title: 'Prepare focus review', description: 'Review priorities and prepare the next action list.', dueAt: new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16), automation: 'scheduled' });
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [wakeWordActive, setWakeWordActive] = useState(false);
+  const [voiceLanguage, setVoiceLanguage] = useState('en-US');
+  const [voiceRate, setVoiceRate] = useState(1);
+  const [googleStatus, setGoogleStatus] = useState<GoogleStatus>({ configured: false, connected: false });
+  const [imagePrompt, setImagePrompt] = useState('');
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [smsMessage, setSmsMessage] = useState('');
+  const [gmailDraft, setGmailDraft] = useState({ to: '', subject: 'Ultron progress update', body: 'Hi,\n\nI wanted to share a quick progress update on the current workstream.\n\nBest,' });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const reminderAlertsRef = useRef<Record<string, boolean>>({});
+  const wakeWordRef = useRef(false);
 
   const assistantSummary = useMemo(() => summary, [summary]);
   const chartMaxValue = useMemo(
@@ -344,6 +370,14 @@ function App() {
       if ('Notification' in window) {
         setNotificationsEnabled(Notification.permission === 'granted');
       }
+
+      try {
+        const googleResponse = await fetch('http://localhost:4000/api/integrations/google/status');
+        const googleData = await googleResponse.json();
+        setGoogleStatus(googleData);
+      } catch {
+        // Google integration remains disconnected when the local API is unavailable.
+      }
     };
 
     loadDashboard();
@@ -385,10 +419,95 @@ function App() {
   const speakText = (text: string) => {
     if (!('speechSynthesis' in window)) return;
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
-    utterance.rate = 1;
+    utterance.lang = voiceLanguage;
+    utterance.rate = voiceRate;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
+  };
+
+  const toggleWakeWord = () => {
+    if (wakeWordActive) {
+      wakeWordRef.current = false;
+      setWakeWordActive(false);
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Wake-word listening needs Speech Recognition support or the Android app.');
+      return;
+    }
+
+    wakeWordRef.current = true;
+    setWakeWordActive(true);
+    const recognition = new SpeechRecognition();
+    recognition.lang = voiceLanguage;
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .slice(event.resultIndex || 0)
+        .map((result: any) => result[0]?.transcript ?? '')
+        .join(' ')
+        .trim();
+      if (!transcript) return;
+      const spoken = transcript.toLowerCase();
+      if (!spoken.includes('hey ultron') && !spoken.includes('ultron')) return;
+      const command = transcript.replace(/hey\s*ultron|ultron/gi, '').trim();
+      if (command) handleSend(command);
+    };
+    recognition.onerror = () => setWakeWordActive(false);
+    recognition.onend = () => {
+      if (wakeWordRef.current) {
+        try { recognition.start(); } catch { setWakeWordActive(false); }
+      }
+    };
+    recognition.start();
+  };
+
+  const generateImage = async () => {
+    const prompt = imagePrompt.trim();
+    if (!prompt) return;
+    try {
+      const response = await fetch('http://localhost:4000/api/media/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Image generation failed.');
+      setGeneratedImage(data.imageUrl);
+      setMessages((current) => [...current, { id: Date.now(), role: 'assistant', text: 'Image generated and ready to preview.' }]);
+    } catch (error) {
+      setMessages((current) => [...current, {
+        id: Date.now(),
+        role: 'assistant',
+        text: error instanceof Error ? error.message : 'Image generation is unavailable right now.',
+      }]);
+    }
+  };
+
+  const openGoogleAuth = () => {
+    window.location.href = 'http://localhost:4000/api/integrations/google/auth';
+  };
+
+  const runPhoneAction = async (action: 'call' | 'sms' | 'lock') => {
+    try {
+      if (action === 'call') {
+        await NativeControls.call({ phoneNumber });
+      } else if (action === 'sms') {
+        await NativeControls.sendSms({ phoneNumber, message: smsMessage });
+      } else {
+        await NativeControls.lockScreen();
+      }
+    } catch {
+      if (action === 'call' && phoneNumber) window.location.href = `tel:${phoneNumber}`;
+      if (action === 'sms' && phoneNumber) window.location.href = `sms:${phoneNumber}?body=${encodeURIComponent(smsMessage)}`;
+      if (action === 'lock') {
+        setMessages((current) => [...current, { id: Date.now(), role: 'assistant', text: 'Screen lock requires the Android app with device-admin permission enabled.' }]);
+      }
+    }
   };
 
   const requestNotifications = async () => {
@@ -468,6 +587,11 @@ function App() {
       const data = await response.json();
       if (Array.isArray(data.reminders)) {
         setReminders(data.reminders);
+        try {
+          await NativeControls.scheduleReminder({ id: data.reminders[0].id, ...payload });
+        } catch {
+          // Browser notifications continue to handle reminders when native scheduling is unavailable.
+        }
       }
     } catch {
       const newReminder: Reminder = {
@@ -493,6 +617,9 @@ function App() {
       const data = await response.json();
       if (Array.isArray(data.reminders)) {
         setReminders(data.reminders);
+        if (!data.reminders.find((item: Reminder) => item.id === reminderId)?.active) {
+          try { await NativeControls.cancelReminder({ id: reminderId }); } catch { /* web fallback */ }
+        }
       }
     } catch {
       setReminders((current) => current.map((item) => item.id === reminderId ? { ...item, active: !item.active } : item));
@@ -552,8 +679,8 @@ function App() {
 
   const handleAssistantAction = async (action: 'calendar' | 'gmail' | 'whatsapp') => {
     const endpointMap = {
-      calendar: 'http://localhost:4000/api/actions/calendar',
-      gmail: 'http://localhost:4000/api/actions/gmail',
+      calendar: googleStatus.connected ? 'http://localhost:4000/api/integrations/google/calendar' : 'http://localhost:4000/api/actions/calendar',
+      gmail: googleStatus.connected && gmailDraft.to ? 'http://localhost:4000/api/integrations/google/gmail/draft' : 'http://localhost:4000/api/actions/gmail',
       whatsapp: 'http://localhost:4000/api/actions/whatsapp',
     };
 
@@ -561,7 +688,9 @@ function App() {
       const response = await fetch(endpointMap[action], {
         method: action === 'calendar' ? 'GET' : 'POST',
         headers: action === 'calendar' ? undefined : { 'Content-Type': 'application/json' },
-        body: action === 'calendar' ? undefined : JSON.stringify({
+        body: action === 'gmail' && googleStatus.connected && gmailDraft.to
+          ? JSON.stringify(gmailDraft)
+          : action === 'calendar' ? undefined : JSON.stringify({
           name: profile.name,
           objective: action === 'gmail' ? 'progress update' : 'check-in',
           recipient: action === 'whatsapp' ? 'team' : undefined,
@@ -813,6 +942,72 @@ function App() {
               <p>{detail}</p>
             </div>
           ))}
+        </section>
+
+        <section className="capability-grid">
+          <div className="panel capability-panel">
+            <div className="panel-header"><Volume2 size={16} /><span>Voice & language</span></div>
+            <div className="capability-form">
+              <label>
+                <span>Output language</span>
+                <select value={voiceLanguage} onChange={(event) => setVoiceLanguage(event.target.value)}>
+                  <option value="en-US">English (US)</option>
+                  <option value="en-GB">English (UK)</option>
+                  <option value="es-ES">Español</option>
+                  <option value="fr-FR">Français</option>
+                  <option value="de-DE">Deutsch</option>
+                  <option value="hi-IN">हिन्दी</option>
+                  <option value="ja-JP">日本語</option>
+                </select>
+              </label>
+              <label>
+                <span>Voice speed · {voiceRate.toFixed(1)}x</span>
+                <input type="range" min="0.6" max="1.4" step="0.1" value={voiceRate} onChange={(event) => setVoiceRate(Number(event.target.value))} />
+              </label>
+              <button className={`save-btn ${wakeWordActive ? 'danger-btn' : ''}`} onClick={toggleWakeWord}>
+                {wakeWordActive ? 'Stop wake-word listener' : 'Enable Hey Ultron listener'}
+              </button>
+              <small className="compact">The browser listener works while this page is open. Android background wake-word support is provided by the native app shell.</small>
+            </div>
+          </div>
+
+          <div className="panel capability-panel">
+            <div className="panel-header"><Wand2 size={16} /><span>Image generation</span></div>
+            <div className="capability-form">
+              <textarea rows={3} value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} placeholder="Describe the image you want Ultron to create..." />
+              <button className="save-btn" onClick={generateImage}>Generate image</button>
+              {generatedImage && <img className="generated-image" src={generatedImage} alt="Generated by Ultron" />}
+            </div>
+          </div>
+
+          <div className="panel capability-panel">
+            <div className="panel-header"><CalendarDays size={16} /><span>Google Workspace</span></div>
+            <p className="compact">{googleStatus.connected ? `Connected${googleStatus.email ? ` as ${googleStatus.email}` : ''}.` : googleStatus.configured ? 'Google OAuth is ready to connect.' : 'Add Google OAuth credentials to enable Calendar and Gmail.'}</p>
+            <button className="save-btn" onClick={openGoogleAuth} disabled={!googleStatus.configured}>
+              {googleStatus.connected ? 'Reconnect Google' : 'Connect Calendar + Gmail'}
+            </button>
+            {googleStatus.connected && (
+              <div className="capability-form">
+                <input value={gmailDraft.to} onChange={(event) => setGmailDraft((current) => ({ ...current, to: event.target.value }))} placeholder="Gmail recipient" type="email" />
+                <input value={gmailDraft.subject} onChange={(event) => setGmailDraft((current) => ({ ...current, subject: event.target.value }))} placeholder="Subject" />
+                <textarea rows={2} value={gmailDraft.body} onChange={(event) => setGmailDraft((current) => ({ ...current, body: event.target.value }))} placeholder="Message" />
+              </div>
+            )}
+          </div>
+
+          <div className="panel capability-panel">
+            <div className="panel-header"><Phone size={16} /><span>Phone controls</span></div>
+            <div className="capability-form">
+              <input value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="Phone number" inputMode="tel" />
+              <input value={smsMessage} onChange={(event) => setSmsMessage(event.target.value)} placeholder="SMS message" />
+              <div className="inline-actions">
+                <button className="ghost-btn" onClick={() => runPhoneAction('call')} disabled={!phoneNumber}>Call</button>
+                <button className="ghost-btn" onClick={() => runPhoneAction('sms')} disabled={!phoneNumber}>SMS</button>
+                <button className="ghost-btn" onClick={() => runPhoneAction('lock')}>Lock screen</button>
+              </div>
+              <small className="compact">Calls and SMS open native phone controls. Screen lock requires granting device-admin access in Android settings.</small>
+            </div>
+          </div>
         </section>
 
         <section className="analytics-grid">

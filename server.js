@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import OpenAI from 'openai';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -104,6 +105,16 @@ const ensureSchema = () => {
     )
   `).run();
 
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS google_tokens (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      access_token TEXT NOT NULL,
+      refresh_token TEXT,
+      expires_at INTEGER NOT NULL,
+      email TEXT NOT NULL DEFAULT ''
+    )
+  `).run();
+
   const reminderColumns = db.prepare('PRAGMA table_info(reminders)').all();
   const reminderNames = reminderColumns.map((column) => column.name);
 
@@ -196,6 +207,54 @@ const getMemoryGraph = () => {
 };
 
 const getTasks = () => db.prepare('SELECT * FROM agent_tasks ORDER BY due_at ASC').all();
+const googleScopes = [
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/gmail.send',
+  'openid',
+  'email',
+].join(' ');
+const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI || `http://localhost:${port}/api/integrations/google/callback`;
+const googleConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+const googleAuthStates = new Set();
+
+const getGoogleToken = () => db.prepare('SELECT * FROM google_tokens WHERE id = 1').get();
+const googleStatus = () => {
+  const token = getGoogleToken();
+  return {
+    configured: googleConfigured,
+    connected: Boolean(token),
+    email: token?.email || undefined,
+  };
+};
+
+const googleRequest = async (url, options = {}) => {
+  const token = getGoogleToken();
+  if (!token) throw new Error('Google is not connected.');
+  let accessToken = token.access_token;
+  if (token.expires_at <= Date.now() + 60000 && token.refresh_token) {
+    const refreshResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        refresh_token: token.refresh_token,
+        grant_type: 'refresh_token',
+      }),
+    });
+    const refreshed = await refreshResponse.json();
+    if (!refreshResponse.ok || !refreshed.access_token) throw new Error('Google token refresh failed.');
+    accessToken = refreshed.access_token;
+    db.prepare('UPDATE google_tokens SET access_token = ?, expires_at = ? WHERE id = 1')
+      .run(accessToken, Date.now() + Number(refreshed.expires_in || 3600) * 1000);
+  }
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...(options.headers || {}), Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) throw new Error(`Google API request failed with status ${response.status}.`);
+  return response;
+};
 
 const runScheduledTasks = () => {
   const now = Date.now();
@@ -534,6 +593,113 @@ app.get('/api/actions/calendar', (_req, res) => {
     suggestion: `Create a focus block for ${profile.name} at 09:00 and a follow-up check at 15:00.`,
   };
   res.json(calendarAction);
+});
+
+app.get('/api/integrations/google/status', (_req, res) => {
+  res.json(googleStatus());
+});
+
+app.get('/api/integrations/google/auth', (_req, res) => {
+  if (!googleConfigured) {
+    return res.status(503).json({ error: 'Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first.' });
+  }
+  const state = crypto.randomBytes(24).toString('hex');
+  googleAuthStates.add(state);
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    redirect_uri: googleRedirectUri,
+    response_type: 'code',
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: googleScopes,
+    state,
+  });
+  return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+app.get('/api/integrations/google/callback', async (req, res) => {
+  const { code, state } = req.query;
+  if (!code || typeof code !== 'string' || !state || typeof state !== 'string' || !googleAuthStates.has(state)) {
+    return res.status(400).send('Invalid Google OAuth state.');
+  }
+  googleAuthStates.delete(state);
+  try {
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: googleRedirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+    const tokens = await tokenResponse.json();
+    if (!tokenResponse.ok || !tokens.access_token) throw new Error('Google authorization failed.');
+    const userResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const user = await userResponse.json();
+    db.prepare(`
+      INSERT INTO google_tokens (id, access_token, refresh_token, expires_at, email)
+      VALUES (1, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET access_token = excluded.access_token,
+        refresh_token = COALESCE(excluded.refresh_token, google_tokens.refresh_token),
+        expires_at = excluded.expires_at, email = excluded.email
+    `).run(tokens.access_token, tokens.refresh_token || null, Date.now() + Number(tokens.expires_in || 3600) * 1000, user.email || '');
+    return res.redirect('http://localhost:3000/?google=connected');
+  } catch (error) {
+    return res.status(502).send(error instanceof Error ? error.message : 'Google authorization failed.');
+  }
+});
+
+app.get('/api/integrations/google/calendar', async (req, res) => {
+  try {
+    const maxResults = Math.min(Math.max(Number(req.query.maxResults || 10), 1), 50);
+    const response = await googleRequest(`https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=${maxResults}&singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(new Date().toISOString())}`);
+    const data = await response.json();
+    return res.json({ events: (data.items || []).map((event) => ({
+      id: event.id,
+      title: event.summary || 'Untitled event',
+      start: event.start?.dateTime || event.start?.date,
+      end: event.end?.dateTime || event.end?.date,
+      htmlLink: event.htmlLink,
+    })) });
+  } catch (error) {
+    return res.status(502).json({ error: error instanceof Error ? error.message : 'Calendar request failed.' });
+  }
+});
+
+app.post('/api/integrations/google/gmail/draft', async (req, res) => {
+  const { to, subject, body } = req.body || {};
+  if (!to || !subject || !body) return res.status(400).json({ error: 'to, subject, and body are required.' });
+  try {
+    const raw = Buffer.from(`To: ${to}\r\nSubject: ${subject}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`)
+      .toString('base64url');
+    const response = await googleRequest('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: { raw } }),
+    });
+    return res.json(await response.json());
+  } catch (error) {
+    return res.status(502).json({ error: error instanceof Error ? error.message : 'Gmail request failed.' });
+  }
+});
+
+app.post('/api/media/image', async (req, res) => {
+  const prompt = String(req.body?.prompt || '').trim();
+  if (!prompt) return res.status(400).json({ error: 'An image prompt is required.' });
+  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'Image generation requires OPENAI_API_KEY.' });
+  try {
+    const result = await openai.images.generate({ model: 'gpt-image-1', prompt, size: '1024x1024' });
+    const image = result.data?.[0];
+    if (!image?.b64_json && !image?.url) throw new Error('The image provider returned no image.');
+    return res.json({ imageUrl: image.url || `data:image/png;base64,${image.b64_json}` });
+  } catch (error) {
+    return res.status(502).json({ error: error instanceof Error ? error.message : 'Image generation failed.' });
+  }
 });
 
 app.post('/api/actions/gmail', (req, res) => {

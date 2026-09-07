@@ -296,6 +296,7 @@ function App() {
   const [smsMessage, setSmsMessage] = useState('');
   const [gmailDraft, setGmailDraft] = useState({ to: '', subject: 'Ultron progress update', body: 'Hi,\n\nI wanted to share a quick progress update on the current workstream.\n\nBest,' });
   const [isThinking, setIsThinking] = useState(false);
+  const [pwaUpdateAvailable, setPwaUpdateAvailable] = useState(false);
   const [liveTime, setLiveTime] = useState(new Date());
   const [activeWorkspace, setActiveWorkspace] = useState('Command center');
   const [liveActivity, setLiveActivity] = useState<LiveActivity[]>([
@@ -312,6 +313,13 @@ function App() {
     () => Math.max(...chartSeries.flatMap((point) => [point.focus, point.tasks]), 100),
     [chartSeries],
   );
+
+  useEffect(() => {
+    const handlePwaUpdate = () => setPwaUpdateAvailable(true);
+    window.addEventListener('pwa-update-ready', handlePwaUpdate);
+
+    return () => window.removeEventListener('pwa-update-ready', handlePwaUpdate);
+  }, []);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -573,6 +581,23 @@ function App() {
   const sendNotification = (title: string, body: string) => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     new Notification(title, { body });
+  };
+
+  const handlePwaRefresh = () => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then((registration) => {
+        if (registration?.waiting) {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          setTimeout(() => window.location.reload(), 150);
+          return;
+        }
+
+        window.location.reload();
+      }).catch(() => window.location.reload());
+      return;
+    }
+
+    window.location.reload();
   };
 
   const handleSend = async (messageOverride?: string) => {
@@ -936,6 +961,16 @@ function App() {
       </aside>
 
       <main className="main-panel">
+        {pwaUpdateAvailable && (
+          <div className="pwa-update-banner" role="status" aria-live="polite">
+            <div>
+              <strong>Update ready</strong>
+              <span>Refresh to install the newest Ultron build.</span>
+            </div>
+            <button type="button" onClick={handlePwaRefresh}>Refresh now</button>
+          </div>
+        )}
+
         <header className="topbar">
           <div>
             <p className="eyebrow">Your command center</p>

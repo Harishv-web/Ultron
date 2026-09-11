@@ -249,6 +249,7 @@ const professionalWorkflows = [
 function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState('');
+  const [activeSection, setActiveSection] = useState('Assistant');
   const [isListening, setIsListening] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [habitList, setHabitList] = useState<Habit[]>([
@@ -600,6 +601,21 @@ function App() {
     window.location.reload();
   };
 
+  const streamAssistantReply = async (text: string) => {
+    const messageId = Date.now() + 1;
+    setMessages((current) => [...current, { id: messageId, role: 'assistant', text: '' }]);
+
+    const words = text.split(' ');
+    let visibleText = '';
+    for (let index = 0; index < words.length; index += 1) {
+      visibleText = `${visibleText}${index > 0 ? ' ' : ''}${words[index]}`;
+      setMessages((current) => current.map((message) => (
+        message.id === messageId ? { ...message, text: visibleText } : message
+      )));
+      await new Promise((resolve) => window.setTimeout(resolve, 22));
+    }
+  };
+
   const handleSend = async (messageOverride?: string) => {
     const trimmed = (messageOverride ?? input).trim();
     if (!trimmed) return;
@@ -621,19 +637,14 @@ function App() {
       });
 
       const data = await response.json();
-      const assistantMessage: ChatMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        text: data.reply ?? 'I am here, boss.',
-      };
-
-      setMessages((current) => [...current, assistantMessage]);
+      const assistantText = data.reply ?? 'I am here, boss.';
+      await streamAssistantReply(assistantText);
       setLiveActivity((current) => [
         { id: Date.now(), label: 'Response ready', detail: 'Answer delivered with your personal context.', time: 'now', state: 'done' },
         ...current.filter((item) => item.state !== 'working').slice(0, 3),
       ]);
-      speakText(assistantMessage.text);
-      sendNotification('Ultron update', assistantMessage.text);
+      speakText(assistantText);
+      sendNotification('Ultron update', assistantText);
 
       if (data.reply) {
         setSummary('Ultron is updating your personal routine and progress using your latest conversation.');
@@ -644,7 +655,8 @@ function App() {
         role: 'assistant',
         text: `Understood, boss. I can help with “${trimmed}” and keep the response direct, precise, and action-focused.`,
       };
-      setMessages((current) => [...current, fallback]);
+      await new Promise((resolve) => window.setTimeout(resolve, 650));
+      await streamAssistantReply(fallback.text);
       setLiveActivity((current) => [
         { id: Date.now(), label: 'Offline assist', detail: 'Using the local response mode while the API reconnects.', time: 'now', state: 'done' },
         ...current.filter((item) => item.state !== 'working').slice(0, 3),
@@ -942,9 +954,18 @@ function App() {
           </div>
         </div>
 
-        <nav className="nav-list">
-          {['Overview', 'Assistant', 'Calendar', 'Habits', 'Media', 'Security'].map((item, index) => (
-            <button className={index === 1 ? 'nav-item active' : 'nav-item'} key={item}>
+        <nav className="nav-list" aria-label="Primary navigation">
+          {['Overview', 'Assistant', 'Calendar', 'Habits', 'Media', 'Security'].map((item) => (
+            <button
+              type="button"
+              className={activeSection === item ? 'nav-item active' : 'nav-item'}
+              key={item}
+              aria-current={activeSection === item ? 'page' : undefined}
+              onClick={() => {
+                setActiveSection(item);
+                document.getElementById(item.toLowerCase())?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+            >
               <span>{item}</span>
               <ChevronRight size={16} />
             </button>
@@ -993,7 +1014,7 @@ function App() {
           </div>
         </header>
 
-        <section className="hero-grid">
+        <section id="overview" className="hero-grid">
           <div className="hero-card large-card">
             <div className="hero-head">
               <div className="hero-label">Live overview</div>
@@ -1030,7 +1051,7 @@ function App() {
           </div>
         </section>
 
-        <section className="live-cockpit panel">
+        <section id="assistant" className="live-cockpit panel">
           <div className="live-cockpit-head">
             <div>
               <p className="eyebrow">Realtime intelligence layer</p>
@@ -1083,7 +1104,7 @@ function App() {
           </div>
         </section>
 
-        <section className="feature-grid">
+        <section id="media" className="feature-grid">
           {featureCards.map(({ icon: Icon, label, detail }) => (
             <div key={label} className="feature-card">
               <Icon size={18} />
@@ -1159,7 +1180,7 @@ function App() {
           </div>
         </section>
 
-        <section className="analytics-grid">
+        <section id="habits" className="analytics-grid">
           <div className="panel analytics-panel">
             <div className="panel-header">
               <Activity size={16} />
@@ -1203,7 +1224,7 @@ function App() {
           </div>
         </section>
 
-        <section className="panel intelligence-panel">
+        <section id="calendar" className="panel intelligence-panel">
           <div className="panel-header">
             <Sparkles size={16} />
             <span>AI command center</span>
@@ -1241,7 +1262,7 @@ function App() {
           </div>
         </section>
 
-        <section className="panel action-panel">
+        <section id="security" className="panel action-panel">
           <div className="panel-header">
             <CalendarDays size={16} />
             <span>Assistant actions</span>
@@ -1335,13 +1356,19 @@ function App() {
               <span>Conversation</span>
             </div>
 
-            <div className="messages">
+            <div className="messages" aria-live="polite" aria-label="Conversation history">
               {messages.map((message) => (
                 <div key={message.id} className={`message ${message.role}`}>
                   <span>{message.role === 'assistant' ? 'Ultron' : 'You'}</span>
                   <p>{message.text}</p>
                 </div>
               ))}
+              {isThinking && (
+                <div className="message assistant typing-message" role="status">
+                  <span>Ultron</span>
+                  <p className="typing-indicator"><i /> <i /> <i /><em>Thinking</em></p>
+                </div>
+              )}
             </div>
 
             <div className="quick-actions">

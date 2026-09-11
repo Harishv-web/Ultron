@@ -1,5 +1,5 @@
 :root {
-  font-family: Inter, 'Segoe UI', sans-serif;
+  font-family: 'Avenir Next', 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: #ebf3ff;
@@ -24,6 +24,10 @@ html, body, #root {
 
 body {
   min-height: 100vh;
+  background:
+    radial-gradient(circle at 78% -10%, rgba(83, 108, 255, 0.16), transparent 34rem),
+    radial-gradient(circle at 8% 42%, rgba(26, 190, 173, 0.06), transparent 28rem),
+    #050b14;
 }
 
 button, input, select, textarea {
@@ -34,6 +38,14 @@ button {
   cursor: pointer;
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #8ca8ff;
+  outline-offset: 3px;
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
@@ -42,6 +54,10 @@ button {
 }
 
 .sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
   background: rgba(7, 17, 31, 0.92);
   border-right: 1px solid rgba(148, 163, 184, 0.15);
   padding: 28px 18px;
@@ -434,6 +450,9 @@ button {
 
 .main-panel {
   padding: 28px;
+  max-width: 1700px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .pwa-update-banner {
@@ -1048,6 +1067,50 @@ button {
   max-height: 420px;
   overflow: auto;
   padding-right: 6px;
+  scroll-behavior: smooth;
+}
+
+.messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messages::-webkit-scrollbar-thumb {
+  background: rgba(132, 157, 224, 0.3);
+  border-radius: 999px;
+}
+
+.typing-message {
+  min-width: 150px;
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+}
+
+.typing-indicator i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8da9ff;
+  animation: typing-pulse 1.1s infinite cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.typing-indicator i:nth-child(2) { animation-delay: 0.14s; }
+.typing-indicator i:nth-child(3) { animation-delay: 0.28s; }
+
+.typing-indicator em {
+  margin-left: 5px;
+  color: #8fa8ce;
+  font-size: 0.72rem;
+  font-style: normal;
+}
+
+@keyframes typing-pulse {
+  0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
 }
 
 .message {
@@ -1310,8 +1373,16 @@ button {
   }
 
   .sidebar {
+    position: static;
+    height: auto;
+    overflow: visible;
     border-right: none;
     border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  }
+
+  .nav-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .feature-grid,
@@ -1331,6 +1402,15 @@ button {
   .topbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .top-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .nav-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .composer {

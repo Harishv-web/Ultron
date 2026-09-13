@@ -10,6 +10,7 @@ import {
   Clock3,
   Cpu,
   Download,
+  Eye,
   FileText,
   Globe,
   ListChecks,
@@ -250,6 +251,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState('');
   const [activeSection, setActiveSection] = useState('Assistant');
+  const [worldLens, setWorldLens] = useState<'all' | 'focus' | 'routines' | 'connections'>('all');
   const [isListening, setIsListening] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [habitList, setHabitList] = useState<Habit[]>([
@@ -314,6 +316,15 @@ function App() {
     () => Math.max(...chartSeries.flatMap((point) => [point.focus, point.tasks]), 100),
     [chartSeries],
   );
+  const worldSignals = useMemo(() => {
+    const signals = [
+      { id: 'focus', label: 'Focus', detail: `${analytics.focusScore}% focus score · ${analytics.tasksCompleted} tasks completed`, icon: Target },
+      { id: 'routines', label: 'Routines', detail: `${habitList.filter((habit) => habit.done).length} of ${habitList.length} habits complete today`, icon: Activity },
+      { id: 'connections', label: 'Connections', detail: `${eventList.length} calendar events · ${reminders.filter((reminder) => reminder.active).length} active reminders`, icon: CalendarDays },
+    ];
+
+    return worldLens === 'all' ? signals : signals.filter((signal) => signal.id === worldLens);
+  }, [analytics, eventList.length, habitList, reminders, worldLens]);
 
   useEffect(() => {
     const handlePwaUpdate = () => setPwaUpdateAvailable(true);
@@ -955,7 +966,7 @@ function App() {
         </div>
 
         <nav className="nav-list" aria-label="Primary navigation">
-          {['Overview', 'Assistant', 'Calendar', 'Habits', 'Media', 'Security'].map((item) => (
+          {['Overview', 'Assistant', 'Calendar', 'Habits', 'Media', 'Services', 'Security'].map((item) => (
             <button
               type="button"
               className={activeSection === item ? 'nav-item active' : 'nav-item'}
@@ -1112,6 +1123,74 @@ function App() {
               <p>{detail}</p>
             </div>
           ))}
+        </section>
+
+        <section id="services" className="world-panel panel">
+          <div className="world-header">
+            <div>
+              <p className="eyebrow">Services · personal perspective</p>
+              <h3>See My World</h3>
+              <p className="compact">A calm, visual read on what is moving through your day right now.</p>
+            </div>
+            <div className="world-orb" aria-hidden="true"><Eye size={24} /></div>
+          </div>
+
+          <div className="world-filters" aria-label="See My World filters">
+            {[
+              { id: 'all', label: 'Everything' },
+              { id: 'focus', label: 'Focus' },
+              { id: 'routines', label: 'Routines' },
+              { id: 'connections', label: 'Connections' },
+            ].map((filter) => (
+              <button
+                key={filter.id}
+                type="button"
+                className={worldLens === filter.id ? 'world-filter active' : 'world-filter'}
+                onClick={() => setWorldLens(filter.id as typeof worldLens)}
+                aria-pressed={worldLens === filter.id}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="world-layout">
+            <div className="world-signal-grid">
+              {worldSignals.map(({ id, label, detail, icon: Icon }) => (
+                <button key={id} type="button" className="world-signal" onClick={() => setWorldLens(id as typeof worldLens)}>
+                  <span className="world-signal-icon"><Icon size={17} /></span>
+                  <span><strong>{label}</strong><small>{detail}</small></span>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+            </div>
+
+            <div className="world-timeline">
+              <div className="world-subhead"><span><Clock3 size={15} /> Your day at a glance</span><small>{liveTime.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</small></div>
+              <div className="world-timeline-list">
+                {eventList.slice(0, 3).map((event) => (
+                  <div className="world-timeline-item" key={`event-${event.id}`}>
+                    <span className="world-timeline-dot focus" />
+                    <div><strong>{event.title}</strong><small>{event.time}</small></div>
+                    <span className="world-tag">{event.type}</span>
+                  </div>
+                ))}
+                {reminders.filter((reminder) => reminder.active).slice(0, 2).map((reminder) => (
+                  <div className="world-timeline-item" key={`reminder-${reminder.id}`}>
+                    <span className="world-timeline-dot routine" />
+                    <div><strong>{reminder.title}</strong><small>{reminder.time} · {reminder.frequency}</small></div>
+                    <span className="world-tag">reminder</span>
+                  </div>
+                ))}
+                {eventList.length === 0 && reminders.length === 0 && <p className="compact">Your timeline is clear. Add a calendar event or reminder to see it here.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="world-footer">
+            <span><Wifi size={14} /> Local-first view</span>
+            <span>{liveActivity.find((item) => item.state === 'working')?.detail || 'Your assistant is ready for the next signal.'}</span>
+          </div>
         </section>
 
         <section className="capability-grid">

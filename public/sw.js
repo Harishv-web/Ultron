@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ultron-ai-cache-v2';
+const CACHE_NAME = 'ultron-ai-cache-v3';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/ultron-icon.svg'];
 
 self.addEventListener('install', (event) => {

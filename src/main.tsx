@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles.css';
 
-const PWA_VERSION = '2026.09.07.3';
+const PWA_VERSION = '2026.09.13.1';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {

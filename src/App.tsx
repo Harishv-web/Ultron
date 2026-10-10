@@ -32,6 +32,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { registerPlugin } from '@capacitor/core';
+import { API_BASE_URL } from './lib/api';
 
 type NativeControlsPlugin = {
   call(options: { phoneNumber: string }): Promise<void>;
@@ -336,7 +337,7 @@ function App() {
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const dashboardResponse = await fetch('http://localhost:4000/api/dashboard');
+        const dashboardResponse = await fetch(`${API_BASE_URL}/api/dashboard`);
         const dashboard = await dashboardResponse.json();
 
         if (dashboard.profile) {
@@ -364,7 +365,7 @@ function App() {
       }
 
       try {
-        const analyticsResponse = await fetch('http://localhost:4000/api/analytics');
+        const analyticsResponse = await fetch(`${API_BASE_URL}/api/analytics`);
         const analyticsData = await analyticsResponse.json();
         if (analyticsData) {
           setAnalytics({
@@ -383,7 +384,7 @@ function App() {
       }
 
       try {
-        const insightResponse = await fetch('http://localhost:4000/api/assistant/insights');
+        const insightResponse = await fetch(`${API_BASE_URL}/api/assistant/insights`);
         const insightData = await insightResponse.json();
         if (Array.isArray(insightData.insights) && insightData.insights.length) {
           setInsights(insightData.insights);
@@ -393,7 +394,7 @@ function App() {
       }
 
       try {
-        const memoryResponse = await fetch('http://localhost:4000/api/memory');
+        const memoryResponse = await fetch(`${API_BASE_URL}/api/memory`);
         const data = await memoryResponse.json();
         if (Array.isArray(data.conversations) && data.conversations.length > 0) {
           const flattened = data.conversations.flatMap((entry: any, index: number) => [
@@ -410,7 +411,7 @@ function App() {
       }
 
       try {
-        const tasksResponse = await fetch('http://localhost:4000/api/tasks');
+        const tasksResponse = await fetch(`${API_BASE_URL}/api/tasks`);
         const tasksData = await tasksResponse.json();
         if (Array.isArray(tasksData.tasks)) {
           setTasks(tasksData.tasks);
@@ -424,7 +425,7 @@ function App() {
       }
 
       try {
-        const googleResponse = await fetch('http://localhost:4000/api/integrations/google/status');
+        const googleResponse = await fetch(`${API_BASE_URL}/api/integrations/google/status`);
         const googleData = await googleResponse.json();
         setGoogleStatus(googleData);
       } catch {
@@ -536,7 +537,7 @@ function App() {
     const prompt = imagePrompt.trim();
     if (!prompt) return;
     try {
-      const response = await fetch('http://localhost:4000/api/media/image', {
+      const response = await fetch(`${API_BASE_URL}/api/media/image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
@@ -555,7 +556,7 @@ function App() {
   };
 
   const openGoogleAuth = () => {
-    window.location.href = 'http://localhost:4000/api/integrations/google/auth';
+    window.location.href = `${API_BASE_URL}/api/integrations/google/auth`;
   };
 
   const runPhoneAction = async (action: 'call' | 'sms' | 'lock') => {
@@ -641,7 +642,7 @@ function App() {
     ]);
 
     try {
-      const response = await fetch('http://localhost:4000/api/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: trimmed }),
@@ -688,7 +689,7 @@ function App() {
     };
 
     try {
-      const response = await fetch('http://localhost:4000/api/reminders', {
+      const response = await fetch(`${API_BASE_URL}/api/reminders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -720,7 +721,7 @@ function App() {
 
   const handleReminderToggle = async (reminderId: number) => {
     try {
-      const response = await fetch(`http://localhost:4000/api/reminders/${reminderId}/toggle`, {
+      const response = await fetch(`${API_BASE_URL}/api/reminders/${reminderId}/toggle`, {
         method: 'POST',
       });
       const data = await response.json();
@@ -742,7 +743,7 @@ function App() {
     };
 
     try {
-      const response = await fetch('http://localhost:4000/api/profile', {
+      const response = await fetch(`${API_BASE_URL}/api/profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nextProfile),
@@ -761,7 +762,7 @@ function App() {
 
   const handleHabitToggle = async (habitId: number) => {
     try {
-      const response = await fetch(`http://localhost:4000/api/habits/${habitId}/toggle`, {
+      const response = await fetch(`${API_BASE_URL}/api/habits/${habitId}/toggle`, {
         method: 'POST',
       });
       const data = await response.json();
@@ -788,9 +789,9 @@ function App() {
 
   const handleAssistantAction = async (action: 'calendar' | 'gmail' | 'whatsapp') => {
     const endpointMap = {
-      calendar: googleStatus.connected ? 'http://localhost:4000/api/integrations/google/calendar' : 'http://localhost:4000/api/actions/calendar',
-      gmail: googleStatus.connected && gmailDraft.to ? 'http://localhost:4000/api/integrations/google/gmail/draft' : 'http://localhost:4000/api/actions/gmail',
-      whatsapp: 'http://localhost:4000/api/actions/whatsapp',
+      calendar: googleStatus.connected ? `${API_BASE_URL}/api/integrations/google/calendar` : `${API_BASE_URL}/api/actions/calendar`,
+      gmail: googleStatus.connected && gmailDraft.to ? `${API_BASE_URL}/api/integrations/google/gmail/draft` : `${API_BASE_URL}/api/actions/gmail`,
+      whatsapp: `${API_BASE_URL}/api/actions/whatsapp`,
     };
 
     try {
@@ -830,7 +831,7 @@ function App() {
     };
 
     try {
-      const response = await fetch('http://localhost:4000/api/tasks', {
+      const response = await fetch(`${API_BASE_URL}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -864,7 +865,7 @@ function App() {
 
   const handleTaskComplete = async (taskId: number) => {
     try {
-      const response = await fetch(`http://localhost:4000/api/tasks/${taskId}/complete`, { method: 'POST' });
+      const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}/complete`, { method: 'POST' });
       const data = await response.json();
       if (Array.isArray(data.tasks)) {
         setTasks(data.tasks);
@@ -916,6 +917,35 @@ function App() {
     recognition.start();
   };
 
+  const handleFileDownload = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/files`);
+      const data = await response.json();
+      const files = Array.isArray(data.files) ? data.files : [];
+
+      if (!files.length) {
+        setMessages((current) => [
+          ...current,
+          { id: Date.now(), role: 'assistant', text: 'No files have been uploaded yet, boss.' },
+        ]);
+        return;
+      }
+
+      const latest = files[files.length - 1];
+      const link = document.createElement('a');
+      link.href = `${API_BASE_URL}${latest.path}`;
+      link.download = latest.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch {
+      setMessages((current) => [
+        ...current,
+        { id: Date.now(), role: 'assistant', text: 'The file list is not reachable right now.' },
+      ]);
+    }
+  };
+
   const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -924,12 +954,12 @@ function App() {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:4000/api/upload', {
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
         body: formData,
       });
       const data = await response.json();
-      if (data.file?.filename) {
+      if (response.ok && data.file?.filename) {
         setUploadedFile(data.file.filename);
         setMessages((current) => [
           ...current,
@@ -937,6 +967,15 @@ function App() {
             id: Date.now(),
             role: 'assistant',
             text: `File received and stored securely: ${data.file.originalName}.`,
+          },
+        ]);
+      } else {
+        setMessages((current) => [
+          ...current,
+          {
+            id: Date.now(),
+            role: 'assistant',
+            text: data.error || 'The file upload could not complete. Please try again.',
           },
         ]);
       }
@@ -1475,7 +1514,7 @@ function App() {
                 <button className="ghost-btn" aria-label="Upload file" onClick={() => fileInputRef.current?.click()}>
                   <Upload size={16} />
                 </button>
-                <button className="ghost-btn" aria-label="Download file">
+                <button className="ghost-btn" aria-label="Download file" onClick={handleFileDownload}>
                   <Download size={16} />
                 </button>
                 <button className={`voice-btn ${isListening ? 'listening' : ''}`} aria-label="Voice input" onClick={handleVoice}>

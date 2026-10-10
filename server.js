@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -177,7 +178,19 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const ALLOWED_UPLOAD_TYPES = /^(image\/|application\/pdf$|application\/vnd\.openxmlformats|application\/msword$|application\/vnd\.ms-excel$|text\/)/;
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_UPLOAD_TYPES.test(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('That file type is not supported. Try an image, PDF, Office document, or text file.'));
+    }
+  },
+});
 
 const getProfile = () => db.prepare('SELECT * FROM profile WHERE id = 1').get();
 const getHabits = () => db.prepare('SELECT * FROM habits ORDER BY id DESC').all();
@@ -214,6 +227,7 @@ const googleScopes = [
   'email',
 ].join(' ');
 const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI || `http://localhost:${port}/api/integrations/google/callback`;
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 const googleConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 const googleAuthStates = new Set();
 
@@ -413,8 +427,33 @@ const resolveCommand = (message) => {
   return null;
 };
 
+const buildContextBrief = ({ profile, habits, events, reminders }) => {
+  const habitLines = habits.length
+    ? habits.slice(0, 6).map((h) => `- ${h.name} (goal: ${h.goal}, streak: ${h.streak}, done today: ${h.done ? 'yes' : 'no'})`).join('\n')
+    : 'No habits tracked yet.';
+
+  const eventLines = events.length
+    ? events.slice(0, 6).map((e) => `- ${e.title} at ${e.time} (${e.type})`).join('\n')
+    : 'No events on the calendar.';
+
+  const reminderLines = reminders.length
+    ? reminders.slice(0, 6).map((r) => `- ${r.title} at ${r.time}, ${r.frequency}${r.active ? '' : ' (inactive)'}`).join('\n')
+    : 'No reminders set.';
+
+  return `User profile: name=${profile.name}, wakeTime=${profile.wake_time}, focusTarget=${profile.focus_target} minutes, timezone=${profile.timezone}.
+Habits:
+${habitLines}
+Upcoming events:
+${eventLines}
+Reminders:
+${reminderLines}`;
+};
+
 const createAssistantReply = async (message) => {
   const profile = getProfile();
+  const habits = getHabits();
+  const events = getEvents();
+  const reminders = getReminders();
   const memoryRows = db.prepare('SELECT role, text FROM chat_memory ORDER BY id DESC LIMIT 12').all();
   const memoryText = memoryRows
     .slice()
@@ -422,12 +461,14 @@ const createAssistantReply = async (message) => {
     .map((row) => `${row.role === 'user' ? 'User' : 'Assistant'}: ${row.text}`)
     .join('\n');
 
-  const commandReply = resolveCommand(message);
-  if (commandReply) {
-    return commandReply;
-  }
+  // Canned offline replies. Used when no API key is set, or as a fallback
+  // when the live API call fails.
+  const offlineFallback = () => {
+    const commandReply = resolveCommand(message);
+    if (commandReply) {
+      return commandReply;
+    }
 
-  if (!process.env.OPENAI_API_KEY) {
     const normalized = message.toLowerCase();
 
     if (normalized.includes('image') || normalized.includes('design') || normalized.includes('art')) {
@@ -439,18 +480,30 @@ const createAssistantReply = async (message) => {
     }
 
     return 'Understood, boss. I am keeping it direct, clear, and action-focused. I can help with planning, communication, habit tracking, reminders, voice commands, and personal productivity.';
+  };
+
+  if (!process.env.OPENAI_API_KEY) {
+    return offlineFallback();
   }
 
-  const prompt = `You are Ultron, a direct, highly capable personal AI assistant for one user only. Keep answers brief, clear, confident, and useful. The user calls you boss. The user profile is: name=${profile.name}, wakeTime=${profile.wake_time}, focusTarget=${profile.focus_target}, timezone=${profile.timezone}. Recent memory:
+  // Key configured: always ask the real model first, grounded in the user's
+  // actual data, instead of matching keywords against canned lines.
+  const prompt = `${buildContextBrief({ profile, habits, events, reminders })}
+
+Recent conversation:
 ${memoryText || 'No prior memory available.'}
 
-User question: ${message}`;
+User message: ${message}`;
 
   try {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are Ultron, a premium personal AI assistant. Give concise, direct, practical answers. Respect the user as boss. Be honest about limits. Prefer useful action steps.' },
+        {
+          role: 'system',
+          content:
+            'You are Ultron, a premium personal AI assistant for a single user who calls you "boss". Use the profile, habits, events, and reminders you are given so answers are specific to their real data rather than generic. Give concise, direct, practical answers. Be honest about your limits. Prefer useful action steps. Always reply in the same language the user just wrote in.',
+        },
         { role: 'user', content: prompt },
       ],
       temperature: 0.5,
@@ -458,8 +511,9 @@ User question: ${message}`;
     });
 
     return completion.choices[0]?.message?.content?.trim() || 'I am ready, boss.';
-  } catch {
-    return 'I am available, boss. The AI provider is not configured right now, so I am falling back to a local response model.';
+  } catch (error) {
+    console.error('OpenAI request failed, falling back to offline response:', error?.message || error);
+    return offlineFallback();
   }
 };
 
@@ -648,7 +702,7 @@ app.get('/api/integrations/google/callback', async (req, res) => {
         refresh_token = COALESCE(excluded.refresh_token, google_tokens.refresh_token),
         expires_at = excluded.expires_at, email = excluded.email
     `).run(tokens.access_token, tokens.refresh_token || null, Date.now() + Number(tokens.expires_in || 3600) * 1000, user.email || '');
-    return res.redirect('http://localhost:3000/?google=connected');
+    return res.redirect(`${frontendUrl}/?google=connected`);
   } catch (error) {
     return res.status(502).send(error instanceof Error ? error.message : 'Google authorization failed.');
   }
@@ -844,7 +898,7 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
   const fileInfo = {
     filename: req.file.filename,
     originalName: req.file.originalname,
-    path: req.file.path,
+    path: `/uploads/${req.file.filename}`,
     size: req.file.size,
   };
 
@@ -860,6 +914,14 @@ app.get('/api/files', (_req, res) => {
 });
 
 app.use('/uploads', express.static(uploadsDir));
+
+// Catches errors passed via next(err), including multer's file-type and
+// file-size rejections, and returns JSON instead of Express's HTML error page.
+app.use((err, _req, res, _next) => {
+  console.error('Request error:', err?.message || err);
+  const status = err?.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+  res.status(status).json({ error: err?.message || 'Something went wrong.' });
+});
 
 setInterval(() => {
   const tasks = runScheduledTasks();

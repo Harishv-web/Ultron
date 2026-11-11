@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07090e" />
+    <meta name="description" content="Ultron — a private, local-first personal command center." />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="assets/ultron-mark.jpg" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Ultron — Personal Intelligence</title>
+  </head>
+  <body>
+    <div class="noise"></div>
+    <main class="app-shell">
+      <aside class="rail" aria-label="Ultron navigation">
+        <button class="brand" aria-label="Ultron home" data-view="command">
+          <img src="assets/ultron-mark.jpg" alt="Ultron mark" />
+          <span>ULTRON</span>
+        </button>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="command"><span class="nav-icon">⌘</span><span>Command</span></button>
+          <button class="nav-item" data-view="assistant"><span class="nav-icon">✦</span><span>Assistant</span></button>
+          <button class="nav-item" data-view="mission"><span class="nav-icon">◫</span><span>Mission</span></button>
+          <button class="nav-item" data-view="focus"><span class="nav-icon">◌</span><span>Focus</span></button>
+          <button class="nav-item" data-view="memory"><span class="nav-icon">◎</span><span>Memory</span></button>
+        </nav>
+
+        <div class="rail-bottom">
+          <button class="nav-item" data-view="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
+          <div class="profile-card">
+            <div class="avatar">B</div>
+            <div><strong>Boss</strong><small>Private profile</small></div>
+            <button class="more" aria-label="Profile options">•••</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <button class="menu-toggle" aria-label="Open menu">☰</button>
+          <div class="breadcrumb"><span class="live-dot"></span><span>ULTRON OS</span><i>/</i><strong id="view-label">COMMAND CENTER</strong></div>
+          <div class="top-actions">
+            <button class="icon-button" id="command-button" aria-label="Open command palette">⌘<span>K</span></button>
+            <button class="icon-button" id="theme-toggle" aria-label="Toggle theme">☼</button>
+            <button class="status-pill" id="system-status"><span></span>All systems nominal</button>
+          </div>
+        </header>
+
+        <div class="dashboard" id="dashboard">
+          <section class="greeting panel-lift">
+            <div class="eyebrow"><span class="pulse"></span> PERSONAL INTELLIGENCE ONLINE</div>
+            <div class="greeting-row">
+              <div>
+                <h1>Good evening, <em>Boss.</em></h1>
+                <p id="daily-brief">Your day is under control. One focused move at a time.</p>
+              </div>
+              <div class="date-block"><strong id="clock">--:--</strong><span id="today">Loading date</span></div>
+            </div>
+          </section>
+
+          <section class="metrics-grid">
+            <article class="metric-card panel-lift"><span class="metric-label">FOCUS BALANCE</span><strong>82<small>%</small></strong><div class="meter"><i style="width:82%"></i></div><span class="metric-note up">↗ 8% from last week</span></article>
+            <article class="metric-card panel-lift"><span class="metric-label">HABIT STREAK</span><strong>14<small> days</small></strong><div class="sparkline"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="metric-note">Best: 21 days</span></article>
+            <article class="metric-card panel-lift"><span class="metric-label">DEEP WORK</span><strong id="focus-hours">3<small>h 40m</small></strong><div class="meter cyan"><i style="width:61%"></i></div><span class="metric-note">Today’s target: 6h</span></article>
+            <article class="metric-card panel-lift"><span class="metric-label">NEXT EVENT</span><strong class="event-time">09:30<small> AM</small></strong><span class="event-name">Algorithms revision</span><button class="join-button" data-action="open-calendar">Open calendar ↗</button></article>
+          </section>
+
+          <section class="main-grid">
+            <article class="assistant-card panel-lift" aria-labelledby="assistant-title">
+              <div class="card-header"><div><span class="eyebrow">ULTRON ASSISTANT</span><h2 id="assistant-title">What are we building today?</h2></div><button class="ellipsis" aria-label="Assistant options">•••</button></div>
+              <div class="quick-prompts">
+                <button data-prompt="Give me a clear plan for today">Plan my day <span>→</span></button>
+                <button data-prompt="Start a 25 minute focus session">Start focus <span>→</span></button>
+                <button data-prompt="Show my weekly progress">Weekly review <span>→</span></button>
+              </div>
+              <div class="conversation" id="conversation" aria-live="polite">
+                <div class="message ultron-message"><span class="message-mark">U</span><p>Ready when you are, Boss. I’ll keep it clear and practical.</p></div>
+              </div>
+              <form class="chat-composer" id="chat-form">
+                <button type="button" class="attach" id="attach-button" aria-label="Attach a file">＋</button>
+                <input id="chat-input" autocomplete="off" placeholder="Ask Ultron anything…" aria-label="Message Ultron" />
+                <button type="button" class="voice-button" id="voice-button" aria-label="Voice input"><span></span><span></span><span></span></button>
+                <button class="send-button" aria-label="Send message" type="submit">↑</button>
+              </form>
+              <input type="file" id="file-input" hidden multiple />
+              <p class="privacy-line"><span>⌁</span> Private workspace · Your local data stays on this device</p>
+            </article>
+
+            <div class="right-stack">
+              <article class="agenda-card panel-lift">
+                <div class="card-header"><div><span class="eyebrow">TODAY'S TRAJECTORY</span><h2>Mission control</h2></div><button class="text-action" data-action="open-calendar">View calendar</button></div>
+                <div class="timeline">
+                  <div class="time-row done"><time>08:00</time><span class="node"></span><div><strong>Morning reset</strong><small>Complete · 20 min</small></div><b>✓</b></div>
+                  <div class="time-row now"><time>09:30</time><span class="node"></span><div><strong>Algorithms revision</strong><small>Deep work · 90 min</small></div><b>NOW</b></div>
+                  <div class="time-row"><time>12:30</time><span class="node"></span><div><strong>Lunch + walk</strong><small>Recovery · 45 min</small></div></div>
+                  <div class="time-row"><time>18:00</time><span class="node"></span><div><strong>Weekly planning</strong><small>Personal · 30 min</small></div></div>
+                </div>
+                <button class="add-event" data-action="add-event">＋ Add to today</button>
+              </article>
+
+              <article class="signal-card panel-lift">
+                <div><span class="eyebrow">PERSONAL SIGNAL</span><h3>Momentum is compounding.</h3><p>Four habits are on track. Keep the next action small.</p></div>
+                <div class="orbit"><span></span><i></i><b>14</b></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="lower-grid">
+            <article class="habit-card panel-lift"><div class="card-header"><div><span class="eyebrow">HABIT ENGINE</span><h2>Daily systems</h2></div><button class="text-action" data-view="mission">Manage</button></div><div id="habit-list" class="habit-list"></div></article>
+            <article class="insight-card panel-lift"><span class="eyebrow">WEEKLY INSIGHT</span><h2>Your best focus window is<br /><em>9:00 — 11:30 AM.</em></h2><div class="bar-chart" aria-label="Focus activity chart"><i style="height:35%"></i><i style="height:48%"></i><i class="active" style="height:89%"></i><i style="height:70%"></i><i style="height:42%"></i><i style="height:26%"></i><i style="height:38%"></i></div><div class="chart-days"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div></article>
+          </section>
+        </div>
+
+        <section class="secondary-view" id="secondary-view" hidden>
+          <div class="view-hero"><span class="eyebrow" id="secondary-eyebrow">PRIVATE MODULE</span><h1 id="secondary-title">Your private intelligence layer.</h1><p id="secondary-copy">Keep your information local, intentional, and useful.</p></div>
+          <div class="module-grid" id="module-grid"></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="command-palette" class="command-palette">
+      <form method="dialog"><div class="palette-search"><span>⌕</span><input id="palette-input" placeholder="Search commands, memories, or actions" autofocus /><kbd>ESC</kbd></div><div class="palette-section"><span>QUICK ACTIONS</span><button value="focus" data-command="focus">◌ <b>Begin focus session</b><small>25 min</small></button><button value="assistant" data-command="assistant">✦ <b>Open Ultron assistant</b><small>Ask anything</small></button><button value="mission" data-command="mission">◫ <b>Plan tomorrow</b><small>Mission</small></button></div><p>↵ to select <i>·</i> ⌘K to toggle</p></form>
+    </dialog>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

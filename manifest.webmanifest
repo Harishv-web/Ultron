@@ -1,0 +1,10 @@
+{
+  "name": "Ultron — Personal Intelligence",
+  "short_name": "Ultron",
+  "description": "A private, local-first personal command center.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#07090e",
+  "theme_color": "#07090e",
+  "icons": [{ "src": "assets/ultron-mark.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any maskable" }]
+}

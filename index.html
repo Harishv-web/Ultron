@@ -91,9 +91,25 @@
             </article>
           </section>
 
+          <section class="future-grid" aria-label="Ultron future planning">
+            <article class="reminder-deck panel-lift">
+              <div class="card-header"><div><span class="eyebrow">TIME INTELLIGENCE</span><h2>Next reminders</h2></div><button class="text-action" data-action="schedule-reminder">Schedule</button></div>
+              <div class="reminder-list" id="reminder-list"></div>
+              <p class="deck-note">Alerts appear only while this private app is open, unless a native companion is connected.</p>
+            </article>
+            <article class="goal-deck panel-lift">
+              <div class="card-header"><div><span class="eyebrow">STRATEGIC GOALS</span><h2>Progress with direction</h2></div><button class="text-action" data-action="add-goal">Add goal</button></div>
+              <div class="goal-list" id="goal-list"></div>
+            </article>
+            <article class="approval-deck panel-lift">
+              <div class="card-header"><div><span class="eyebrow">CONSENT QUEUE</span><h2>Nothing acts silently.</h2></div><button class="text-action" data-view="intel">Review rules</button></div>
+              <div class="approval-list" id="approval-list"></div>
+            </article>
+          </section>
+
           <section class="main-grid">
             <article class="assistant-card panel-lift" aria-labelledby="assistant-title">
-              <div class="card-header"><div><span class="eyebrow">ULTRON ASSISTANT <i class="mode-dot"></i> LOCAL MODE</span><h2 id="assistant-title">What are we building today?</h2></div><button class="ellipsis" aria-label="Assistant options">•••</button></div>
+              <div class="card-header"><div><span class="eyebrow">ULTRON ASSISTANT <i class="mode-dot"></i> <span id="ai-mode-text">LOCAL MODE</span></span><h2 id="assistant-title">What are we building today?</h2></div><button class="ellipsis" aria-label="Assistant options">•••</button></div>
               <div class="quick-prompts">
                 <button data-prompt="Give me a clear plan for today">Plan my day <span>→</span></button>
                 <button data-prompt="Start a 25 minute focus session">Start focus <span>→</span></button>
@@ -169,6 +185,18 @@
     </dialog>
     <dialog id="confirm-dialog" class="capture-dialog confirm-dialog">
       <div class="dialog-top"><div><span class="eyebrow">DATA CONTROL</span><h2>Clear local Ultron data?</h2></div><button class="dialog-close" data-action="close-dialog" aria-label="Close dialog">×</button></div><p>This removes chats, memories, focus data, habits, and preferences from this browser. Export a backup first if you may want it later.</p><div class="dialog-actions"><button class="danger-action" id="confirm-clear">Clear this device</button><button class="ghost-action" data-action="close-dialog">Keep my data</button></div>
+    </dialog>
+    <dialog id="schedule-dialog" class="capture-dialog">
+      <form id="schedule-form"><div class="dialog-top"><div><span class="eyebrow">TIME INTELLIGENCE</span><h2>Schedule a private reminder.</h2></div><button type="button" class="dialog-close" data-action="close-dialog" aria-label="Close scheduler">×</button></div><label class="field-label">REMINDER<input id="reminder-input" maxlength="120" required placeholder="e.g. Leave for college" /></label><label class="field-label spaced-field">WHEN<input id="reminder-due" type="datetime-local" required /></label><div class="dialog-actions"><button class="primary-action" type="submit">Schedule locally</button><button class="ghost-action" type="button" data-action="close-dialog">Cancel</button></div><p class="dialog-note">This browser-only reminder works while Ultron is open. Background device alerts require a permissioned native companion.</p></form>
+    </dialog>
+    <dialog id="goal-dialog" class="capture-dialog">
+      <form id="goal-form"><div class="dialog-top"><div><span class="eyebrow">STRATEGIC GOALS</span><h2>Define a measurable goal.</h2></div><button type="button" class="dialog-close" data-action="close-dialog" aria-label="Close goal dialog">×</button></div><label class="field-label">GOAL<input id="goal-title-input" maxlength="80" required placeholder="e.g. Finish semester syllabus" /></label><label class="field-label spaced-field">TARGET UNITS<input id="goal-target-input" type="number" min="1" max="999" value="10" required /></label><div class="dialog-actions"><button class="primary-action" type="submit">Create goal</button><button class="ghost-action" type="button" data-action="close-dialog">Cancel</button></div></form>
+    </dialog>
+    <dialog id="vault-dialog" class="capture-dialog">
+      <form id="vault-form"><div class="dialog-top"><div><span class="eyebrow">ENCRYPTED VAULT</span><h2 id="vault-title">Create encrypted backup.</h2></div><button type="button" class="dialog-close" data-action="close-dialog" aria-label="Close encrypted vault">×</button></div><p id="vault-copy" class="dialog-note vault-copy">Your passphrase is never stored. Without it, the backup cannot be recovered.</p><label class="field-label">PASSPHRASE<input id="vault-passphrase" type="password" minlength="12" autocomplete="new-password" required placeholder="At least 12 characters" /></label><div class="dialog-actions"><button class="primary-action" id="vault-submit" type="submit">Encrypt backup</button><button class="ghost-action" type="button" data-action="close-dialog">Cancel</button></div></form>
+    </dialog>
+    <dialog id="model-dialog" class="capture-dialog">
+      <form id="model-form"><div class="dialog-top"><div><span class="eyebrow">ON-DEVICE AI GATEWAY</span><h2>Connect a local model.</h2></div><button type="button" class="dialog-close" data-action="close-dialog" aria-label="Close model gateway">×</button></div><p class="dialog-note vault-copy">Ultron accepts only a localhost endpoint here, so chats never leave your device through this setting. Your model service must allow browser requests.</p><label class="field-label">LOCAL ENDPOINT<input id="model-endpoint" type="url" inputmode="url" required placeholder="http://localhost:11434" /></label><label class="field-label spaced-field">MODEL NAME<input id="model-name" maxlength="80" required placeholder="e.g. llama3.2" /></label><div class="dialog-actions"><button class="primary-action" type="submit">Save gateway</button><button class="ghost-action" type="button" data-action="close-dialog">Cancel</button></div></form>
     </dialog>
     <div class="toast" id="toast" role="status"></div>
     <input type="file" id="import-input" hidden accept="application/json" />

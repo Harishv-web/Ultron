@@ -25,6 +25,7 @@
           <button class="nav-item" data-view="mission"><span class="nav-icon">◫</span><span>Mission</span></button>
           <button class="nav-item" data-view="focus"><span class="nav-icon">◌</span><span>Focus</span></button>
           <button class="nav-item" data-view="memory"><span class="nav-icon">◎</span><span>Memory</span></button>
+          <button class="nav-item" data-view="intel"><span class="nav-icon">◈</span><span>Intelligence</span></button>
         </nav>
 
         <div class="rail-bottom">
@@ -58,6 +59,11 @@
               </div>
               <div class="date-block"><strong id="clock">--:--</strong><span id="today">Loading date</span></div>
             </div>
+            <div class="greeting-actions">
+              <button class="primary-action" data-action="daily-brief"><span>✦</span> Run daily brief</button>
+              <button class="ghost-action" id="quiet-toggle"><span class="quiet-dot"></span><span id="quiet-label">Quiet mode off</span></button>
+              <span class="local-proof">⌁ <b>Local-first</b> · Private memory enabled</span>
+            </div>
           </section>
 
           <section class="metrics-grid">
@@ -67,13 +73,32 @@
             <article class="metric-card panel-lift"><span class="metric-label">NEXT EVENT</span><strong class="event-time">09:30<small> AM</small></strong><span class="event-name">Algorithms revision</span><button class="join-button" data-action="open-calendar">Open calendar ↗</button></article>
           </section>
 
+          <section class="operations-grid" aria-label="Ultron operations">
+            <article class="focus-deck panel-lift">
+              <div class="card-header"><div><span class="eyebrow">FOCUS PROTOCOL</span><h2>Protect your attention.</h2></div><button class="text-action" data-view="focus">Open lab</button></div>
+              <div class="focus-deck-body">
+                <div class="focus-ring"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="43"/><circle class="ring-progress" id="focus-ring-progress" cx="50" cy="50" r="43"/></svg><div><strong id="focus-countdown">25:00</strong><small id="focus-state">READY</small></div></div>
+                <div class="focus-copy"><strong id="focus-intention">Algorithms revision</strong><p>One clear target. No multitasking.</p><div class="focus-controls"><button class="primary-action compact" data-action="open-focus">Begin session</button><button class="icon-action" data-action="reset-focus" aria-label="Reset focus timer">↺</button></div></div>
+              </div>
+            </article>
+            <article class="next-action-card panel-lift">
+              <span class="eyebrow">NEXT BEST MOVE</span><div class="priority-orb"><span>01</span></div><h2>Open your notes and solve the first recurrence problem.</h2><p>Estimated effort: 10 minutes to begin.</p><button class="text-action" data-prompt="Help me begin my next best move">Ask Ultron to guide me →</button>
+            </article>
+            <article class="integrity-card panel-lift">
+              <div class="card-header"><div><span class="eyebrow">SYSTEM INTEGRITY</span><h2>Trust, visible.</h2></div><button class="text-action" data-view="settings">Controls</button></div>
+              <div class="integrity-list"><span><i class="status-dot active"></i> Local data vault <b>ACTIVE</b></span><span><i class="status-dot"></i> Calendar bridge <b>NOT CONNECTED</b></span><span><i class="status-dot"></i> Local AI engine <b>OPTIONAL</b></span></div>
+              <p>Ultron asks before any action that could affect an account, a person, or a device.</p>
+            </article>
+          </section>
+
           <section class="main-grid">
             <article class="assistant-card panel-lift" aria-labelledby="assistant-title">
-              <div class="card-header"><div><span class="eyebrow">ULTRON ASSISTANT</span><h2 id="assistant-title">What are we building today?</h2></div><button class="ellipsis" aria-label="Assistant options">•••</button></div>
+              <div class="card-header"><div><span class="eyebrow">ULTRON ASSISTANT <i class="mode-dot"></i> LOCAL MODE</span><h2 id="assistant-title">What are we building today?</h2></div><button class="ellipsis" aria-label="Assistant options">•••</button></div>
               <div class="quick-prompts">
                 <button data-prompt="Give me a clear plan for today">Plan my day <span>→</span></button>
                 <button data-prompt="Start a 25 minute focus session">Start focus <span>→</span></button>
                 <button data-prompt="Show my weekly progress">Weekly review <span>→</span></button>
+                <button data-prompt="Run my daily brief">Daily brief <span>→</span></button>
               </div>
               <div class="conversation" id="conversation" aria-live="polite">
                 <div class="message ultron-message"><span class="message-mark">U</span><p>Ready when you are, Boss. I’ll keep it clear and practical.</p></div>
@@ -104,12 +129,20 @@
                 <div><span class="eyebrow">PERSONAL SIGNAL</span><h3>Momentum is compounding.</h3><p>Four habits are on track. Keep the next action small.</p></div>
                 <div class="orbit"><span></span><i></i><b>14</b></div>
               </article>
+              <article class="proactive-card panel-lift">
+                <div class="proactive-number">02</div><div><span class="eyebrow">PROACTIVE QUEUE</span><h3>Two things need a decision.</h3><p>Confirm your evening reset and choose tomorrow’s first priority.</p><button class="text-action" data-prompt="Help me resolve my proactive queue">Review queue →</button></div>
+              </article>
             </div>
           </section>
 
           <section class="lower-grid">
-            <article class="habit-card panel-lift"><div class="card-header"><div><span class="eyebrow">HABIT ENGINE</span><h2>Daily systems</h2></div><button class="text-action" data-view="mission">Manage</button></div><div id="habit-list" class="habit-list"></div></article>
+            <article class="habit-card panel-lift"><div class="card-header"><div><span class="eyebrow">HABIT ENGINE</span><h2>Daily systems</h2></div><button class="text-action" data-view="mission">Manage</button></div><div id="habit-list" class="habit-list"></div><div class="habit-footer"><span id="habit-summary">2 / 3 complete</span><button class="text-action" data-action="add-habit">＋ Add system</button></div></article>
             <article class="insight-card panel-lift"><span class="eyebrow">WEEKLY INSIGHT</span><h2>Your best focus window is<br /><em>9:00 — 11:30 AM.</em></h2><div class="bar-chart" aria-label="Focus activity chart"><i style="height:35%"></i><i style="height:48%"></i><i class="active" style="height:89%"></i><i style="height:70%"></i><i style="height:42%"></i><i style="height:26%"></i><i style="height:38%"></i></div><div class="chart-days"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div></article>
+          </section>
+
+          <section class="activity-stream panel-lift">
+            <div class="card-header"><div><span class="eyebrow">PRIVATE ACTIVITY LEDGER</span><h2>What Ultron knows and why.</h2></div><button class="text-action" data-view="memory">Open memory vault</button></div>
+            <div id="activity-list" class="activity-list"></div>
           </section>
         </div>
 
@@ -121,9 +154,24 @@
     </main>
 
     <dialog id="command-palette" class="command-palette">
-      <form method="dialog"><div class="palette-search"><span>⌕</span><input id="palette-input" placeholder="Search commands, memories, or actions" autofocus /><kbd>ESC</kbd></div><div class="palette-section"><span>QUICK ACTIONS</span><button value="focus" data-command="focus">◌ <b>Begin focus session</b><small>25 min</small></button><button value="assistant" data-command="assistant">✦ <b>Open Ultron assistant</b><small>Ask anything</small></button><button value="mission" data-command="mission">◫ <b>Plan tomorrow</b><small>Mission</small></button></div><p>↵ to select <i>·</i> ⌘K to toggle</p></form>
+      <form method="dialog"><div class="palette-search"><span>⌕</span><input id="palette-input" placeholder="Search commands, memories, or actions" autofocus /><kbd>ESC</kbd></div><div class="palette-section" id="palette-actions"><span>QUICK ACTIONS</span><button value="focus" data-command="open-focus">◌ <b>Begin focus session</b><small>25 min</small></button><button value="brief" data-command="daily-brief">✦ <b>Run daily brief</b><small>Today</small></button><button value="assistant" data-command="assistant">✦ <b>Open Ultron assistant</b><small>Ask anything</small></button><button value="memory" data-command="memory">◎ <b>Open memory vault</b><small>Private</small></button></div><p>↵ to select <i>·</i> ⌘K to toggle</p></form>
+    </dialog>
+    <dialog id="focus-dialog" class="focus-dialog">
+      <div class="dialog-top"><div><span class="eyebrow">FOCUS PROTOCOL</span><h2 id="focus-dialog-title">Start a protected session.</h2></div><button class="dialog-close" data-action="close-dialog" aria-label="Close focus protocol">×</button></div>
+      <div class="focus-modal-display"><strong id="focus-modal-countdown">25:00</strong><span id="focus-modal-state">READY</span></div>
+      <label class="field-label">INTENTION<input id="focus-intention-input" maxlength="80" value="Algorithms revision" /></label>
+      <div class="duration-pills" role="group" aria-label="Focus duration"><button data-duration="25" class="selected">25 min</button><button data-duration="50">50 min</button><button data-duration="90">90 min</button></div>
+      <div class="dialog-actions"><button class="primary-action" id="focus-start-button">Begin focus</button><button class="ghost-action" data-action="reset-focus">Reset</button></div>
+      <p class="dialog-note">Ultron will never mute notifications, close apps, or change device settings without a native permission and your confirmation.</p>
+    </dialog>
+    <dialog id="capture-dialog" class="capture-dialog">
+      <form id="capture-form"><div class="dialog-top"><div><span class="eyebrow" id="capture-eyebrow">QUICK CAPTURE</span><h2 id="capture-title">Capture something useful.</h2></div><button type="button" class="dialog-close" data-action="close-dialog" aria-label="Close dialog">×</button></div><label class="field-label" id="capture-label">DETAIL<input id="capture-input" maxlength="120" required placeholder="Type it clearly…" /></label><div class="dialog-actions"><button class="primary-action" type="submit">Save locally</button><button class="ghost-action" type="button" data-action="close-dialog">Cancel</button></div></form>
+    </dialog>
+    <dialog id="confirm-dialog" class="capture-dialog confirm-dialog">
+      <div class="dialog-top"><div><span class="eyebrow">DATA CONTROL</span><h2>Clear local Ultron data?</h2></div><button class="dialog-close" data-action="close-dialog" aria-label="Close dialog">×</button></div><p>This removes chats, memories, focus data, habits, and preferences from this browser. Export a backup first if you may want it later.</p><div class="dialog-actions"><button class="danger-action" id="confirm-clear">Clear this device</button><button class="ghost-action" data-action="close-dialog">Keep my data</button></div>
     </dialog>
     <div class="toast" id="toast" role="status"></div>
+    <input type="file" id="import-input" hidden accept="application/json" />
     <script src="app.js"></script>
   </body>
 </html>

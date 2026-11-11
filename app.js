@@ -1,115 +1,355 @@
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
+const STORAGE_KEY = 'ultron-os-state-v3';
+const FOCUS_CIRCUMFERENCE = 270;
+let focusTimer = null;
+let captureMode = 'memory';
 
-const state = {
-  habits: JSON.parse(localStorage.getItem('ultron-habits') || '[true,true,false]'),
-  history: JSON.parse(localStorage.getItem('ultron-chat') || '[]'),
-  currentView: 'command'
-};
+function defaults() {
+  return {
+    profile: { name: 'Boss', locale: navigator.language || 'en-US' },
+    habits: [
+      { title: 'Hydration', detail: '6 / 8 glasses', done: true },
+      { title: 'Deep study', detail: '90 min target', done: true },
+      { title: 'Evening reset', detail: '9:30 PM', done: false }
+    ],
+    agenda: [
+      { time: '08:00', title: 'Morning reset', detail: 'Complete · 20 min', done: true },
+      { time: '09:30', title: 'Algorithms revision', detail: 'Deep work · 90 min', now: true, done: false },
+      { time: '12:30', title: 'Lunch + walk', detail: 'Recovery · 45 min', done: false },
+      { time: '18:00', title: 'Weekly planning', detail: 'Personal · 30 min', done: false }
+    ],
+    memory: [
+      { text: 'Call me Boss.', type: 'Preference', savedAt: Date.now() - 86400000 },
+      { text: 'Strongest focus window: 9:00 — 11:30 AM.', type: 'Insight', savedAt: Date.now() - 7200000 },
+      { text: 'Today’s intention is Algorithms revision.', type: 'Context', savedAt: Date.now() - 3600000 }
+    ],
+    activity: [
+      { text: 'Private memory vault initialized on this device.', type: 'SYSTEM', time: Date.now() - 1800000 },
+      { text: 'Deep study marked complete for today.', type: 'HABIT', time: Date.now() - 1200000 },
+      { text: 'Next best move identified: Algorithms revision.', type: 'INTELLIGENCE', time: Date.now() - 600000 }
+    ],
+    history: [],
+    focus: { total: 25 * 60, remaining: 25 * 60, running: false, intention: 'Algorithms revision', sessions: 0 },
+    settings: { quiet: false, speak: false, notifications: false, theme: 'dark' }
+  };
+}
 
-const modules = {
-  assistant: { eyebrow: 'CONVERSATIONAL INTELLIGENCE', title: 'A direct answer, whenever you need one.', copy: 'Use this space for questions, voice notes, and private files. A local model connection can be added when you are ready.', cards: [['Voice channel','Use your microphone for a hands-free session.','Activate microphone'],['Private files','Attach a document or image for this session.','Attach a file'],['Languages','Choose the language you want Ultron to use.','Language settings']] },
-  mission: { eyebrow: 'HABIT & GOAL SYSTEM', title: 'Build the system behind your goals.', copy: 'Track daily habits, weekly missions, and long-term milestones in one private dashboard.', cards: [['Daily completion','4 / 5 systems checked in','Open habits'],['This week','18 focused hours logged','Review week'],['Milestones','3 moments worth remembering','View timeline']] },
-  focus: { eyebrow: 'DEEP WORK PROTOCOL', title: 'Make your next hour count.', copy: 'A distraction-light focus mode with local timers and session history.', cards: [['Focus timer','Start a 25-minute uninterrupted sprint.','Start 25 minutes'],['Today’s depth','3h 40m of 6h target','Set target'],['Distraction log','No interruptions recorded','Open focus mode']] },
-  memory: { eyebrow: 'PRIVATE MEMORY', title: 'Useful context that stays yours.', copy: 'Memories are intentionally saved on this device. You decide what Ultron keeps and what it forgets.', cards: [['Saved preferences','“Call me Boss”','Manage preferences'],['Recent context','Today’s agenda and goals','Review memory'],['Data control','Export or clear local data at any time.','Open data controls']] },
-  settings: { eyebrow: 'PRIVATE BY DESIGN', title: 'Control every connection.', copy: 'Connect only the services you want. Sensitive device actions always need your explicit approval.', cards: [['Local-first data','This demo stores data in your browser.','Privacy settings'],['Calendar connection','Not connected yet','Connect calendar'],['Offline readiness','Service worker enabled after first visit.','Check offline status']] }
-};
+function normalize(raw) {
+  const base = defaults();
+  let oldHabits = null;
+  let oldHistory = null;
+  try { oldHabits = JSON.parse(localStorage.getItem('ultron-habits') || 'null'); oldHistory = JSON.parse(localStorage.getItem('ultron-chat') || 'null'); } catch { /* use fresh state */ }
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const habits = Array.isArray(source.habits) ? source.habits : (Array.isArray(oldHabits) ? base.habits.map((habit, index) => ({ ...habit, done: Boolean(oldHabits[index]) })) : base.habits);
+  return {
+    ...base,
+    ...source,
+    profile: { ...base.profile, ...(source.profile || {}) },
+    settings: { ...base.settings, ...(source.settings || {}) },
+    focus: { ...base.focus, ...(source.focus || {}) },
+    habits: habits.map((habit, index) => ({ ...base.habits[index % base.habits.length], ...habit })),
+    agenda: Array.isArray(source.agenda) ? source.agenda : base.agenda,
+    memory: Array.isArray(source.memory) ? source.memory : base.memory,
+    activity: Array.isArray(source.activity) ? source.activity : base.activity,
+    history: Array.isArray(source.history) ? source.history : (Array.isArray(oldHistory) ? oldHistory : [])
+  };
+}
 
-function save() {
-  localStorage.setItem('ultron-habits', JSON.stringify(state.habits));
-  localStorage.setItem('ultron-chat', JSON.stringify(state.history.slice(-20)));
+let state = normalize((() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; } })());
+
+function persist() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem('ultron-theme', state.settings.theme);
 }
 
 function escapeHtml(value) {
-  const node = document.createElement('div'); node.textContent = value; return node.innerHTML;
+  const node = document.createElement('div');
+  node.textContent = String(value);
+  return node.innerHTML;
 }
 
-function addMessage(text, sender = 'ultron', saveMessage = true) {
+function formatDuration(seconds) {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function relativeTime(time) {
+  const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+function toast(message) {
+  const el = $('#toast');
+  el.textContent = message;
+  el.classList.add('show');
+  clearTimeout(window.ultronToastTimer);
+  window.ultronToastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+function addActivity(text, type = 'INTELLIGENCE') {
+  state.activity.unshift({ text, type, time: Date.now() });
+  state.activity = state.activity.slice(0, 12);
+  persist();
+  renderActivity();
+}
+
+function addMemory(text, type = 'Saved note') {
+  const clean = text.trim();
+  if (!clean) return;
+  state.memory.unshift({ text: clean, type, savedAt: Date.now() });
+  state.memory = state.memory.slice(0, 30);
+  addActivity(`Saved to private memory: “${clean.slice(0, 54)}${clean.length > 54 ? '…' : ''}”`, 'MEMORY');
+  persist();
+}
+
+function speak(text) {
+  if (!state.settings.speak || !('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.03;
+  utterance.pitch = .92;
+  window.speechSynthesis.speak(utterance);
+}
+
+function addMessage(text, sender = 'ultron', persistMessage = true) {
   const item = document.createElement('div');
   item.className = `message ${sender === 'user' ? 'user-message' : 'ultron-message'}`;
   item.innerHTML = sender === 'user' ? `<p>${escapeHtml(text)}</p>` : `<span class="message-mark">U</span><p>${escapeHtml(text)}</p>`;
   $('#conversation').append(item);
   $('#conversation').scrollTop = $('#conversation').scrollHeight;
-  if (saveMessage) { state.history.push({ text, sender }); save(); }
+  if (persistMessage) {
+    state.history.push({ text, sender, time: Date.now() });
+    state.history = state.history.slice(-30);
+    persist();
+  }
+  if (sender === 'ultron') speak(text);
 }
 
-function replyFor(text) {
-  const input = text.toLowerCase();
-  if (input.includes('plan') || input.includes('day')) return 'Plan locked: finish Algorithms revision, protect a 25-minute focus block, then handle your weekly planning at 18:00. Start with the next 10 minutes.';
-  if (input.includes('focus')) { $('#focus-hours').innerHTML = '3<small>h 41m</small>'; return 'Focus protocol is ready, Boss. I’ve marked the next 25 minutes as distraction-free. Your timer can be connected in the Focus module.'; }
-  if (input.includes('progress') || input.includes('week')) return 'This week: 18 focused hours, a 14-day habit streak, and four habits holding steady. Your strongest focus window remains 9:00–11:30 AM.';
-  if (input.includes('hello') || input.includes('hi')) return 'Hello, Boss. What is the one result that would make today a win?';
-  return 'I’ve captured that, Boss. For a production local assistant, connect a local model such as Ollama in the integration layer; the dashboard and private activity data remain on your device.';
+function getDailyBrief() {
+  const undone = state.habits.filter(habit => !habit.done).length;
+  const agendaRemaining = state.agenda.filter(item => !item.done).length;
+  return `Briefing, ${state.profile.name}: your highest-leverage move is ${state.focus.intention}. You have ${agendaRemaining} agenda items and ${undone} habit${undone === 1 ? '' : 's'} still open. Begin with one protected focus block.`;
+}
+
+function respondTo(input) {
+  const lower = input.toLowerCase().trim();
+  const remember = input.match(/^remember(?: that)?\s+(.+)/i);
+  const remind = input.match(/^remind me to\s+(.+)/i);
+  if (remember) {
+    addMemory(remember[1], 'Explicit memory');
+    return 'Locked in, Boss. I saved that to your private memory vault on this device.';
+  }
+  if (remind) {
+    state.agenda.push({ time: 'NEXT', title: remind[1], detail: 'Captured by Ultron · needs a time', done: false });
+    persist(); renderAgenda(); addActivity(`Captured a reminder: ${remind[1]}`, 'TASK');
+    return `Captured: “${remind[1]}.” It is now in your agenda as an unscheduled item.`;
+  }
+  if (lower.includes('daily brief') || lower.includes('brief me')) return getDailyBrief();
+  if (lower.includes('what do you remember') || lower.includes('memory')) return `My current useful context: ${state.memory.slice(0, 3).map(item => item.text).join(' · ')}. You can review or erase any of it in the Memory vault.`;
+  if (lower.includes('plan') || lower.includes('day')) return 'Plan locked: protect a 25-minute Algorithms revision block, handle lunch recovery at 12:30, then use weekly planning at 18:00. The only required first step is opening your notes.';
+  if (lower.includes('focus') || lower.includes('start')) { openFocusDialog(); return 'Focus protocol is open, Boss. Choose a duration and begin when the intention is clear.'; }
+  if (lower.includes('progress') || lower.includes('week')) return `This week: 18 deep-work hours, a 14-day streak, and ${state.habits.filter(habit => habit.done).length} of ${state.habits.length} daily systems complete. Your strongest focus window remains 9:00–11:30 AM.`;
+  if (lower.includes('hello') || lower.includes('hi')) return `Hello, ${state.profile.name}. What single result would make today a win?`;
+  return 'I have that, Boss. This private interface can organize your intent, focus, memories, and data locally. When you connect an approved local model gateway, it can answer with your on-device model while keeping the same permission boundaries.';
 }
 
 function sendMessage(text) {
-  const clean = text.trim(); if (!clean) return;
+  const clean = text.trim();
+  if (!clean) return;
   addMessage(clean, 'user');
-  window.setTimeout(() => addMessage(replyFor(clean)), 450);
+  window.setTimeout(() => addMessage(respondTo(clean)), 360);
+}
+
+function renderClock() {
+  const now = new Date();
+  const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening';
+  $('.greeting h1').innerHTML = `${greeting}, <em>${escapeHtml(state.profile.name)}.</em>`;
+  $('#clock').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  $('#today').textContent = now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+  $('#daily-brief').textContent = state.focus.running ? `Focus protocol active: ${state.focus.intention}. Your attention is protected.` : 'Your day is under control. One focused move at a time.';
 }
 
 function renderHabits() {
-  const habits = [['Hydration','6 / 8 glasses'],['Deep study','90 min target'],['Evening reset','9:30 PM']];
-  $('#habit-list').innerHTML = habits.map(([name, detail], index) => `<label class="habit"><input type="checkbox" data-habit="${index}" ${state.habits[index] ? 'checked' : ''}/><span><strong>${name}</strong><small>${detail}</small></span></label>`).join('');
-  $$('[data-habit]').forEach(input => input.addEventListener('change', () => { state.habits[Number(input.dataset.habit)] = input.checked; save(); toast(input.checked ? `${input.parentElement.innerText.split('\n')[0]} complete.` : 'Habit reopened.'); }));
+  $('#habit-list').innerHTML = state.habits.map((habit, index) => `<label class="habit"><input type="checkbox" data-habit="${index}" ${habit.done ? 'checked' : ''}/><span><strong>${escapeHtml(habit.title)}</strong><small>${escapeHtml(habit.detail)}</small></span></label>`).join('');
+  $('#habit-summary').textContent = `${state.habits.filter(habit => habit.done).length} / ${state.habits.length} complete`;
 }
 
-function updateClock() {
-  const now = new Date();
-  $('#clock').textContent = now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-  $('#today').textContent = now.toLocaleDateString([], {weekday:'long', month:'short', day:'numeric'});
+function renderAgenda() {
+  $('.timeline').innerHTML = state.agenda.map((item, index) => `<button class="time-row ${item.done ? 'done' : ''} ${item.now && !item.done ? 'now' : ''}" data-event-done="${index}" aria-label="Mark ${escapeHtml(item.title)} ${item.done ? 'open' : 'complete'}"><time>${escapeHtml(item.time)}</time><span class="node"></span><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></div>${item.done ? '<b>✓</b>' : item.now ? '<b>NOW</b>' : '<b></b>'}</button>`).join('');
 }
 
-function toast(message) { const el = $('#toast'); el.textContent = message; el.classList.add('show'); clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
+function renderFocus() {
+  const ratio = state.focus.total ? Math.max(0, Math.min(1, state.focus.remaining / state.focus.total)) : 1;
+  $('#focus-countdown').textContent = formatDuration(state.focus.remaining);
+  $('#focus-modal-countdown').textContent = formatDuration(state.focus.remaining);
+  $('#focus-state').textContent = state.focus.running ? 'IN PROGRESS' : state.focus.remaining === 0 ? 'COMPLETE' : 'READY';
+  $('#focus-modal-state').textContent = $('#focus-state').textContent;
+  $('#focus-intention').textContent = state.focus.intention;
+  $('#focus-intention-input').value = state.focus.intention;
+  $('#focus-ring-progress').style.strokeDashoffset = String(FOCUS_CIRCUMFERENCE * (1 - ratio));
+  $('#focus-start-button').textContent = state.focus.running ? 'Pause focus' : state.focus.remaining === 0 ? 'Start new session' : 'Begin focus';
+}
+
+function renderActivity() {
+  $('#activity-list').innerHTML = state.activity.slice(0, 3).map(item => `<article class="activity-entry"><time><i>●</i>${escapeHtml(item.type)} · ${relativeTime(item.time)}</time><p>${escapeHtml(item.text)}</p></article>`).join('');
+}
+
+function renderSettings() {
+  document.body.classList.toggle('light', state.settings.theme === 'light');
+  $('#quiet-toggle').classList.toggle('active', state.settings.quiet);
+  $('#quiet-label').textContent = state.settings.quiet ? 'Quiet mode on' : 'Quiet mode off';
+  $('#system-status').innerHTML = state.settings.quiet ? '<span></span>Quiet mode active' : '<span></span>All systems nominal';
+}
+
+function renderAll() { renderClock(); renderHabits(); renderAgenda(); renderFocus(); renderActivity(); renderSettings(); }
+
+function ensureFocusTimer() {
+  clearInterval(focusTimer);
+  if (!state.focus.running) return;
+  focusTimer = window.setInterval(() => {
+    if (!state.focus.running) return;
+    state.focus.remaining = Math.max(0, state.focus.remaining - 1);
+    if (state.focus.remaining === 0) {
+      state.focus.running = false; state.focus.sessions += 1; clearInterval(focusTimer);
+      addActivity(`Completed a protected focus session: ${state.focus.intention}.`, 'FOCUS');
+      toast('Focus session complete. Take a deliberate break, Boss.');
+      if (state.settings.notifications && 'Notification' in window && Notification.permission === 'granted') new Notification('Ultron focus complete', { body: 'Your protected focus session is complete.' });
+      speak('Focus session complete. Take a deliberate break, Boss.');
+    }
+    persist(); renderFocus(); renderClock();
+  }, 1000);
+}
+
+function startOrPauseFocus() {
+  if (state.focus.running) { state.focus.running = false; clearInterval(focusTimer); addActivity(`Paused focus protocol: ${state.focus.intention}.`, 'FOCUS'); toast('Focus protocol paused.'); }
+  else { if (state.focus.remaining === 0) state.focus.remaining = state.focus.total; state.focus.intention = $('#focus-intention-input').value.trim() || 'Protected focus'; state.focus.running = true; addActivity(`Focus protocol started: ${state.focus.intention}.`, 'FOCUS'); toast('Focus protocol active. One thing only.'); }
+  persist(); renderAll(); ensureFocusTimer();
+}
+
+function resetFocus() { clearInterval(focusTimer); state.focus.running = false; state.focus.remaining = state.focus.total; persist(); renderAll(); toast('Focus timer reset.'); }
+
+function setFocusDuration(minutes) {
+  if (state.focus.running) { toast('Pause the current session before changing duration.'); return; }
+  state.focus.total = minutes * 60; state.focus.remaining = minutes * 60;
+  $$('.duration-pills button').forEach(button => button.classList.toggle('selected', Number(button.dataset.duration) === minutes));
+  persist(); renderFocus();
+}
+
+function openFocusDialog() { if (!$('#focus-dialog').open) $('#focus-dialog').showModal(); renderFocus(); }
+
+function openCapture(mode) {
+  captureMode = mode;
+  const content = { habit: ['HABIT ENGINE', 'Add a daily system.', 'SYSTEM NAME', 'e.g. Read 10 pages'], event: ['MISSION CONTROL', 'Capture an agenda item.', 'NEXT ACTION', 'e.g. Submit lab assignment'], memory: ['PRIVATE MEMORY', 'Save a useful memory.', 'WHAT SHOULD ULTRON REMEMBER?', 'e.g. My exam is on Friday'] }[mode];
+  $('#capture-eyebrow').textContent = content[0]; $('#capture-title').textContent = content[1]; $('#capture-label').childNodes[0].textContent = content[2]; $('#capture-input').placeholder = content[3]; $('#capture-input').value = '';
+  $('#capture-dialog').showModal(); window.setTimeout(() => $('#capture-input').focus(), 50);
+}
+
+function submitCapture(value) {
+  const clean = value.trim(); if (!clean) return;
+  if (captureMode === 'habit') { state.habits.push({ title: clean, detail: 'Daily system', done: false }); addActivity(`Added “${clean}” to daily systems.`, 'HABIT'); toast('New daily system added.'); }
+  if (captureMode === 'event') { state.agenda.push({ time: 'NEXT', title: clean, detail: 'Captured by Ultron · needs a time', done: false }); addActivity(`Added “${clean}” to mission control.`, 'TASK'); toast('Agenda item captured.'); }
+  if (captureMode === 'memory') { addMemory(clean, 'Saved note'); toast('Saved to private memory.'); }
+  persist(); renderAll(); $('#capture-dialog').close();
+}
+
+function exportData() {
+  const payload = { exportedAt: new Date().toISOString(), app: 'Ultron OS', version: 3, state };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+  const anchor = document.createElement('a'); anchor.href = url; anchor.download = `ultron-private-backup-${new Date().toISOString().slice(0, 10)}.json`; document.body.append(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+  addActivity('Created an encrypted-ready local data export.', 'DATA'); toast('Private backup exported to this device.');
+}
+
+function importData(file) {
+  const reader = new FileReader();
+  reader.onload = () => { try { const parsed = JSON.parse(reader.result); state = normalize(parsed.state || parsed); state.focus.running = false; persist(); renderAll(); ensureFocusTimer(); toast('Private backup restored locally.'); } catch { toast('That file is not a valid Ultron backup.'); } };
+  reader.readAsText(file);
+}
+
+function clearData() {
+  clearInterval(focusTimer); localStorage.removeItem(STORAGE_KEY); localStorage.removeItem('ultron-habits'); localStorage.removeItem('ultron-chat'); localStorage.removeItem('ultron-theme'); state = defaults(); $('#confirm-dialog').close(); $('#conversation').innerHTML = '<div class="message ultron-message"><span class="message-mark">U</span><p>Private workspace reset. Ready when you are, Boss.</p></div>'; persist(); renderAll(); toast('Local Ultron data cleared.');
+}
+
+function requestNotifications() {
+  if (!('Notification' in window)) { toast('This browser does not provide notifications.'); return; }
+  Notification.requestPermission().then(permission => { state.settings.notifications = permission === 'granted'; persist(); if (permission === 'granted') { new Notification('Ultron notifications enabled', { body: 'You will only receive alerts that you explicitly configure.' }); toast('Notifications enabled.'); } else toast('Notifications stay off. You can enable them later in browser settings.'); });
+}
+
+function moduleCard(title, copy, action, stat = '', tag = '') { return `<article class="module-card panel-lift"><span class="eyebrow">${escapeHtml(tag || 'PRIVATE MODULE')}</span><h2>${escapeHtml(title)}</h2><p>${escapeHtml(copy)}</p>${stat ? `<span class="module-stat">${escapeHtml(stat)}</span>` : ''}${action ? `<button data-action="${action}">${escapeHtml(action.replaceAll('-', ' '))} →</button>` : ''}</article>`; }
+
+function renderModule(view) {
+  const done = state.habits.filter(item => item.done).length;
+  const cards = {
+    assistant: [moduleCard('Voice channel', 'Speech-to-text is available through your browser; optional voice replies stay off until you choose them.', 'voice-settings', 'READY', 'VOICE'), moduleCard('Local model gateway', 'Connect a local Ollama-compatible service only when it is running on your own device.', 'connect-local-model', 'OFFLINE', 'AI ENGINE'), moduleCard('Document workspace', 'Attach files to the current session. Their contents are not uploaded by this interface.', 'attach-file', 'PRIVATE', 'FILES')],
+    mission: [moduleCard('Daily completion', 'Daily systems build predictable progress.', 'add-habit', `${done} / ${state.habits.length}`, 'HABIT ENGINE'), moduleCard('Mission control', 'Capture the next thing before it becomes mental noise.', 'add-event', `${state.agenda.filter(item => !item.done).length} OPEN`, 'AGENDA'), moduleCard('Weekly review', 'Review the signals, then deliberately adjust the system.', 'daily-brief', '18H', 'THIS WEEK')],
+    focus: [moduleCard('Protected focus timer', 'Choose a clear intention and a duration. Ultron records only the session you choose to start.', 'open-focus', formatDuration(state.focus.remaining), 'FOCUS PROTOCOL'), moduleCard('Session history', 'Completed blocks are a signal, not a measure of your worth.', '', `${state.focus.sessions} SESSIONS`, 'LOCAL METRIC'), moduleCard('Attention safeguards', 'Native app integrations can later offer opt-in notification silencing or app blocking.', 'open-focus', 'OPT-IN', 'DEVICE CONTROL')],
+    memory: [moduleCard('Memory capture', 'Save only the details that will be useful later.', 'save-memory', `${state.memory.length} ITEMS`, 'PRIVATE VAULT'), moduleCard('Export backup', 'Download a readable private backup before moving devices.', 'export-data', 'JSON', 'DATA PORTABILITY'), moduleCard('Import backup', 'Restore an Ultron backup you explicitly select from this device.', 'import-data', 'LOCAL', 'DATA PORTABILITY'), `<article class="memory-vault panel-lift"><span class="eyebrow">MEMORY VAULT · REVIEWABLE & ERASABLE</span><h2>Current private context</h2>${state.memory.slice(0, 6).map((item, index) => `<div class="vault-row"><small>${escapeHtml(item.type)} · ${relativeTime(item.savedAt)}</small><p>${escapeHtml(item.text)}</p><button data-memory-remove="${index}" aria-label="Remove memory">×</button></div>`).join('')}<div class="dialog-actions"><button class="primary-action" data-action="save-memory">Save new memory</button><button class="ghost-action" data-action="clear-data">Clear all local data</button></div></article>`],
+    settings: [moduleCard('Voice replies', 'Keep spoken Ultron replies off or on. This setting remains in your browser.', 'voice-settings', state.settings.speak ? 'ON' : 'OFF', 'VOICE'), moduleCard('Notifications', 'Ultron can request browser notifications only after you activate them.', 'enable-notifications', state.settings.notifications ? 'ON' : 'OFF', 'ALERTS'), moduleCard('Appearance', 'Switch between the low-light command interface and a bright work surface.', 'toggle-theme', state.settings.theme.toUpperCase(), 'DISPLAY'), `<article class="settings-note">Sensitive integrations—including calendar edits, emails, social messages, calls, device locks, and screen-time controls—are intentionally unavailable until you connect a native, permissioned integration. Ultron should ask before it acts.</article>`],
+    intel: [moduleCard('Calendar bridge', 'Read or write calendar events only after a direct OAuth connection you approve.', 'connect-calendar', 'NOT CONNECTED', 'ACCOUNT'), moduleCard('Device capabilities', 'Phone calls, lock commands, wake words, and screen-time controls need an approved native mobile companion.', 'device-roadmap', 'NATIVE REQUIRED', 'DEVICE'), moduleCard('Privacy model', 'Actions affecting accounts, people, or devices must cross a visible consent gate.', 'privacy-brief', 'ACTIVE', 'SAFETY'), `<article class="settings-note">Ultron OS is currently running as a private local web app. It can work offline after its first load; local AI, secure syncing, and native device features are progressive integrations, not invisible background access.</article>`]
+  };
+  const intros = { assistant: ['CONVERSATIONAL INTELLIGENCE', 'A direct answer, whenever you need one.', 'Use voice, local files, and an optional local model gateway without losing control of your data.'], mission: ['HABIT & GOAL SYSTEM', 'Build the system behind your goals.', 'Your goals become actionable only when the next move is visible.'], focus: ['DEEP WORK PROTOCOL', 'Make your next hour count.', 'A deliberately small focus layer: intention, timer, history, and no hidden device control.'], memory: ['PRIVATE MEMORY', 'Useful context that stays yours.', 'Every saved item is visible, exportable, and erasable from this device.'], settings: ['CONTROL CENTER', 'You decide every connection.', 'Tune the parts of Ultron that are allowed to run and keep every sensitive integration off by default.'], intel: ['INTEGRATION INTELLIGENCE', 'The future layer—permission first.', 'A real personal assistant needs trustworthy connections, not silent access.'] };
+  const [eyebrow, title, copy] = intros[view] || intros.settings;
+  $('#secondary-eyebrow').textContent = eyebrow; $('#secondary-title').textContent = title; $('#secondary-copy').textContent = copy; $('#module-grid').innerHTML = (cards[view] || cards.settings).join('');
+}
 
 function showView(view) {
-  const isCommand = view === 'command'; state.currentView = view;
-  $('#dashboard').hidden = !isCommand; $('#secondary-view').hidden = isCommand;
-  $$('.nav-item').forEach(button => button.classList.toggle('active', button.dataset.view === view));
-  $('#view-label').textContent = isCommand ? 'COMMAND CENTER' : (view || 'COMMAND').toUpperCase();
-  if (!isCommand) {
-    const data = modules[view] || modules.settings;
-    $('#secondary-eyebrow').textContent = data.eyebrow; $('#secondary-title').textContent = data.title; $('#secondary-copy').textContent = data.copy;
-    $('#module-grid').innerHTML = data.cards.map(([title, copy, action], i) => `<article class="module-card panel-lift"><span class="eyebrow">0${i + 1} / ${view.toUpperCase()}</span><h2>${title}</h2><p>${copy}</p><button data-module-action="${action}">${action} →</button></article>`).join('');
-    $$('[data-module-action]').forEach(button => button.addEventListener('click', () => toast(`${button.dataset.moduleAction} is ready for the production integration.`)));
-  }
-  $('.rail').classList.remove('open'); window.scrollTo({top: 0, behavior: 'smooth'});
+  state.currentView = view;
+  const isCommand = view === 'command'; $('#dashboard').hidden = !isCommand; $('#secondary-view').hidden = isCommand; $$('.nav-item').forEach(button => button.classList.toggle('active', button.dataset.view === view)); $('#view-label').textContent = isCommand ? 'COMMAND CENTER' : (view || 'COMMAND').toUpperCase(); if (!isCommand) renderModule(view); $('.rail').classList.remove('open'); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function handleAction(action) {
+  const actions = { 'daily-brief': () => sendMessage('Run my daily brief'), 'open-focus': openFocusDialog, 'reset-focus': resetFocus, 'add-event': () => openCapture('event'), 'add-habit': () => openCapture('habit'), 'save-memory': () => openCapture('memory'), 'export-data': exportData, 'import-data': () => $('#import-input').click(), 'clear-data': () => $('#confirm-dialog').showModal(), 'enable-notifications': requestNotifications, 'toggle-theme': () => { state.settings.theme = state.settings.theme === 'light' ? 'dark' : 'light'; persist(); renderSettings(); if (state.currentView === 'settings') renderModule('settings'); toast(`${state.settings.theme === 'light' ? 'Light' : 'Low-light'} workspace enabled.`); }, 'voice-settings': () => { state.settings.speak = !state.settings.speak; persist(); if (state.currentView === 'assistant' || state.currentView === 'settings') renderModule(state.currentView); toast(`Voice replies ${state.settings.speak ? 'enabled' : 'disabled'}.`); }, 'attach-file': () => $('#file-input').click(), 'connect-local-model': () => toast('Local model gateway is ready for an Ollama-compatible endpoint. Add it only on your own device.'), 'connect-calendar': () => toast('Calendar connection stays off until you add an OAuth integration and approve it.'), 'device-roadmap': () => toast('Native phone control needs a Capacitor companion and explicit device permissions.'), 'privacy-brief': () => toast('Privacy rule: Ultron must ask before any action affecting a person, account, or device.'), 'open-calendar': () => toast('Calendar integrations are deliberately opt-in.'), 'close-dialog': () => $$('dialog[open]').forEach(dialog => dialog.close()) };
+  if (actions[action]) actions[action]();
 }
 
 function setupVoice() {
-  const button = $('#voice-button');
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Recognition) { button.addEventListener('click', () => toast('Voice input needs a Chromium browser with speech recognition enabled.')); return; }
-  const recognition = new Recognition(); recognition.lang = navigator.language || 'en-US'; recognition.interimResults = false;
-  recognition.onstart = () => { button.classList.add('is-listening'); toast('Listening, Boss…'); };
+  const button = $('#voice-button'); const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) { button.addEventListener('click', () => toast('Voice input needs a browser with speech recognition enabled.')); return; }
+  const recognition = new Recognition(); recognition.lang = state.profile.locale; recognition.interimResults = false;
+  recognition.onstart = () => { button.classList.add('is-listening'); toast(`Listening, ${state.profile.name}…`); };
   recognition.onend = () => button.classList.remove('is-listening');
   recognition.onresult = event => { $('#chat-input').value = event.results[0][0].transcript; $('#chat-form').requestSubmit(); };
-  recognition.onerror = () => toast('I could not hear that. Try again when microphone permission is available.');
+  recognition.onerror = () => toast('I could not hear that. Check microphone permission and try again.');
   button.addEventListener('click', () => recognition.start());
 }
 
 function setupPalette() {
-  const dialog = $('#command-palette');
-  const toggle = () => dialog.open ? dialog.close() : dialog.showModal();
+  const dialog = $('#command-palette'); const toggle = () => dialog.open ? dialog.close() : dialog.showModal();
   $('#command-button').addEventListener('click', toggle);
-  window.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); toggle(); } if (event.key === '/' && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) { event.preventDefault(); $('#chat-input').focus(); } });
-  $$('[data-command]').forEach(button => button.addEventListener('click', () => { showView(button.dataset.command); dialog.close(); }));
+  $('#palette-input').addEventListener('input', event => { const term = event.target.value.toLowerCase(); $$('#palette-actions button').forEach(button => { button.hidden = !button.textContent.toLowerCase().includes(term); }); });
+  $$('#palette-actions button').forEach(button => button.addEventListener('click', event => { event.preventDefault(); dialog.close(); const command = button.dataset.command; if (command === 'open-focus') openFocusDialog(); else if (command === 'daily-brief') sendMessage('Run my daily brief'); else showView(command); }));
+  window.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); toggle(); } if (event.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) { event.preventDefault(); $('#chat-input').focus(); } });
+}
+
+function bindEvents() {
+  document.addEventListener('click', event => {
+    const view = event.target.closest('[data-view]'); if (view) { showView(view.dataset.view); return; }
+    const prompt = event.target.closest('[data-prompt]'); if (prompt) { sendMessage(prompt.dataset.prompt); return; }
+    const action = event.target.closest('[data-action]'); if (action) { handleAction(action.dataset.action); return; }
+    const habit = event.target.closest('[data-habit]'); if (habit) { const index = Number(habit.dataset.habit); state.habits[index].done = habit.checked; addActivity(`${state.habits[index].title} marked ${habit.checked ? 'complete' : 'open'}.`, 'HABIT'); persist(); renderHabits(); toast(habit.checked ? `${state.habits[index].title} complete.` : 'Habit reopened.'); return; }
+    const agenda = event.target.closest('[data-event-done]'); if (agenda) { const index = Number(agenda.dataset.eventDone); state.agenda[index].done = !state.agenda[index].done; state.agenda[index].now = false; addActivity(`${state.agenda[index].title} marked ${state.agenda[index].done ? 'complete' : 'open'}.`, 'TASK'); persist(); renderAgenda(); return; }
+    const removeMemory = event.target.closest('[data-memory-remove]'); if (removeMemory) { const index = Number(removeMemory.dataset.memoryRemove); const [removed] = state.memory.splice(index, 1); addActivity(`Removed a saved memory: “${removed.text.slice(0, 40)}${removed.text.length > 40 ? '…' : ''}”`, 'MEMORY'); persist(); renderModule('memory'); toast('Memory removed from this device.'); }
+  });
+  $('#quiet-toggle').addEventListener('click', () => { state.settings.quiet = !state.settings.quiet; persist(); renderSettings(); toast(state.settings.quiet ? 'Quiet mode enabled.' : 'Quiet mode disabled.'); });
+  $('#theme-toggle').addEventListener('click', () => handleAction('toggle-theme'));
+  $('#chat-form').addEventListener('submit', event => { event.preventDefault(); const input = $('#chat-input'); sendMessage(input.value); input.value = ''; });
+  $('#attach-button').addEventListener('click', () => $('#file-input').click());
+  $('#file-input').addEventListener('change', event => { const files = [...event.target.files]; if (files.length) { addActivity(`${files.length} private file${files.length > 1 ? 's' : ''} selected for this session.`, 'FILES'); toast(`${files.length} file${files.length > 1 ? 's' : ''} selected locally for this session.`); } event.target.value = ''; });
+  $('#focus-start-button').addEventListener('click', startOrPauseFocus);
+  $('#focus-intention-input').addEventListener('change', event => { state.focus.intention = event.target.value.trim() || 'Protected focus'; persist(); renderFocus(); });
+  $$('.duration-pills button').forEach(button => button.addEventListener('click', () => setFocusDuration(Number(button.dataset.duration))));
+  $('#capture-form').addEventListener('submit', event => { event.preventDefault(); submitCapture($('#capture-input').value); });
+  $('#confirm-clear').addEventListener('click', clearData);
+  $('#import-input').addEventListener('change', event => { const file = event.target.files[0]; if (file) importData(file); event.target.value = ''; });
 }
 
 function init() {
-  renderHabits(); updateClock(); setInterval(updateClock, 1000);
-  state.history.forEach(message => addMessage(message.text, message.sender, false));
-  $$('.nav-item[data-view], [data-view="command"]').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
-  $('#chat-form').addEventListener('submit', event => { event.preventDefault(); const input = $('#chat-input'); sendMessage(input.value); input.value = ''; });
-  $$('.quick-prompts button').forEach(button => button.addEventListener('click', () => sendMessage(button.dataset.prompt)));
-  $('#attach-button').addEventListener('click', () => $('#file-input').click());
-  $('#file-input').addEventListener('change', event => { const files = [...event.target.files]; if (files.length) toast(`${files.length} file${files.length > 1 ? 's' : ''} attached locally for this session.`); event.target.value = ''; });
-  $('#theme-toggle').addEventListener('click', () => { document.body.classList.toggle('light'); localStorage.setItem('ultron-theme', document.body.classList.contains('light') ? 'light' : 'dark'); });
-  if (localStorage.getItem('ultron-theme') === 'light') document.body.classList.add('light');
-  $('.menu-toggle').addEventListener('click', () => $('.rail').classList.toggle('open'));
-  $$('[data-action="open-calendar"]').forEach(button => button.addEventListener('click', () => toast('Calendar integrations are deliberately opt-in. Connect one from Settings when ready.')));
-  $('[data-action="add-event"]').addEventListener('click', () => toast('Quick event capture is ready to connect to your local calendar.'));
-  setupVoice(); setupPalette();
+  state.currentView = 'command'; renderAll(); state.history.forEach(message => addMessage(message.text, message.sender, false)); bindEvents(); setupVoice(); setupPalette(); ensureFocusTimer(); setInterval(renderClock, 1000);
+  window.addEventListener('online', () => { $('#system-status').innerHTML = '<span></span>All systems nominal'; toast('Connection restored. Local data remains on this device.'); });
+  window.addEventListener('offline', () => { $('#system-status').innerHTML = '<span></span>Offline · local mode'; toast('Offline mode active. Your private workspace is still available.'); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
+
 init();

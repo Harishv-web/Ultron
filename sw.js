@@ -1,4 +1,4 @@
-const CACHE = 'ultron-local-v3';
+const CACHE = 'ultron-local-v4';
 const FILES = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest', './assets/ultron-mark.jpg'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(

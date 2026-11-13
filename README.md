@@ -27,6 +27,15 @@ For a temporary browser preview on a phone, host this folder on an HTTPS URL and
 - File selection feedback, command palette (`Ctrl/Cmd + K`), light/dark workspace, quiet mode, integration intelligence, and explicit privacy controls.
 - Offline shell caching after the first visit.
 
+## Advanced private intelligence
+
+- **Streaming local AI:** Configure a localhost-only Ollama-compatible gateway from **Assistant** or **Settings**. Ultron streams answers directly from `/api/chat`; no remote endpoint is accepted. If the local model is offline, Ultron falls back to its local organizer logic.
+- **Document intelligence:** Add text notes, Markdown, CSV, JSON, HTML, and text-accessible document exports to the **Library**. Ultron performs local keyword retrieval and identifies matching source filenames. Binary scans and image-only PDFs need OCR in the planned native companion before they can be searched reliably.
+- **Action control:** Phrases such as “create calendar event…” or “draft email…” create a local approval item. Approval creates only a local agenda item or local draft; email, calendar, social, phone, and device actions remain blocked without a dedicated permissioned connector. The action ledger provides undo for locally reversible actions.
+- **College command:** The **College** workspace tracks attendance, deadlines, and exams. Attendance below 75% is surfaced in the daily brief; this is an estimate based only on the values you enter, not an institutional record.
+- **Encrypted vault:** The Memory workspace can export AES-GCM encrypted backups using PBKDF2-derived passphrase keys. Passphrases are never stored and cannot be recovered.
+- **Native readiness:** `capacitor.config.ts`, `package.json`, and [native/README.md](native/README.md) are included as the deliberate path to permission-gated Android/iOS capabilities. Automatic encrypted sync and system-level wake word/device controls still need a separate native backend or relay architecture.
+
 ## Using Ultron safely
 
 The public GitHub Pages build is a **local UI shell**: it does not have access to your accounts, files, microphone, notifications, phone, email, calendar, or other device controls unless you explicitly give a browser or native companion permission. Private state is stored only in that browser profile and can be backed up from the **Memory** vault.

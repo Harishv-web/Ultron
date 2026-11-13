@@ -64,12 +64,16 @@ function defaults() {
   };
 }
 
-function normalize(raw) {
+function normalize(raw, strict = false) {
   const base = defaults();
   let oldHabits = null;
   let oldHistory = null;
   try { oldHabits = JSON.parse(localStorage.getItem('ultron-habits') || 'null'); oldHistory = JSON.parse(localStorage.getItem('ultron-chat') || 'null'); } catch { /* use fresh state */ }
-  const source = raw && typeof raw === 'object' ? raw : {};
+  const allowedKeys = new Set(['profile', 'habits', 'agenda', 'memory', 'activity', 'history', 'reminders', 'goals', 'documents', 'college', 'audit', 'devices', 'approvals', 'model', 'focus', 'settings']);
+  const isRecord = raw && typeof raw === 'object' && !Array.isArray(raw);
+  if (strict && !isRecord) throw new Error('Backup state must be an object.');
+  if (strict && Object.keys(raw).some(key => !allowedKeys.has(key))) throw new Error('Backup state contains unsupported data.');
+  const source = isRecord ? (strict ? Object.fromEntries(Object.entries(raw).filter(([key]) => allowedKeys.has(key))) : raw) : {};
   const habits = Array.isArray(source.habits) ? source.habits : (Array.isArray(oldHabits) ? base.habits.map((habit, index) => ({ ...habit, done: Boolean(oldHabits[index]) })) : base.habits);
   return {
     ...base,
@@ -488,8 +492,27 @@ function restoreState(payload) {
 }
 
 function importData(file) {
+  const maximumBackupBytes = 2 * 1024 * 1024;
+  if (!file || file.size > maximumBackupBytes) { toast('Backup must be under 2 MB.'); return; }
   const reader = new FileReader();
-  reader.onload = () => { try { const parsed = JSON.parse(reader.result); if (parsed.encrypted === true) { pendingEncryptedBackup = parsed; openVault('decrypt'); return; } restoreState(parsed); toast('Private backup restored locally.'); } catch { toast('That file is not a valid Ultron backup.'); } };
+  reader.onerror = () => toast('Ultron could not read that backup file.');
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      const isRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+      if (!isRecord) throw new Error('Backup must be an object.');
+      if (parsed.encrypted === true) {
+        const encryptedKeys = new Set(['encrypted', 'app', 'version', 'algorithm', 'kdf', 'iterations', 'salt', 'iv', 'ciphertext']);
+        if (Object.keys(parsed).some(key => !encryptedKeys.has(key)) || parsed.app !== 'Ultron OS' || parsed.algorithm !== 'AES-GCM' || parsed.kdf !== 'PBKDF2-SHA-256' || typeof parsed.salt !== 'string' || typeof parsed.iv !== 'string' || typeof parsed.ciphertext !== 'string') throw new Error('Encrypted backup schema is invalid.');
+        pendingEncryptedBackup = parsed; openVault('decrypt'); return;
+      }
+      const backupKeys = new Set(['exportedAt', 'app', 'version', 'state']);
+      if (Object.keys(parsed).some(key => !backupKeys.has(key)) || parsed.app !== 'Ultron OS' || !Number.isInteger(parsed.version) || !Object.hasOwn(parsed, 'state')) throw new Error('Backup schema is invalid.');
+      const validatedState = normalize(parsed.state, true);
+      restoreState({ state: validatedState });
+      toast('Private backup restored locally.');
+    } catch { toast('That file is not a valid Ultron backup.'); }
+  };
   reader.readAsText(file);
 }
 

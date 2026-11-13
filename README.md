@@ -24,6 +24,7 @@ For a temporary browser preview on a phone, host this folder on an HTTPS URL and
 - Private browser memory: save memories in chat (`Remember…`), review/remove them, and export/import a local JSON backup.
 - Editable habits and agenda capture, including natural-language reminders (`Remind me to…`).
 - Voice-to-text when the browser supports Web Speech, optional spoken replies, and browser notifications only after the user explicitly enables them.
+- A localhost-only Ollama-compatible AI gateway with streamed private replies and an offline organizer fallback when no local model is available.
 - File selection feedback, command palette (`Ctrl/Cmd + K`), light/dark workspace, quiet mode, integration intelligence, and explicit privacy controls.
 - Offline shell caching after the first visit.
 
@@ -46,7 +47,7 @@ The connection cards are deliberate design boundaries, not missing error states.
 
 The UI never silently takes control of a device or account. Those functions should be connected only after explicit approvals and per-service OAuth/device permissions:
 
-1. **Local AI:** Run Ollama or another local model, then add a small local API adapter to pass chat/file prompts to it. A capable local model needs a modern laptop/desktop; quality and speed depend on the hardware.
+1. **Local AI:** Run Ollama or another compatible local model through Ultron's existing localhost gateway. Model quality, context capacity, and response speed depend on the model selected and the available CPU, RAM, GPU, and storage bandwidth.
 2. **Voice:** For reliable wake-word/offline transcription, add an on-device wake-word engine and speech-to-text model. Browser speech recognition is a convenience fallback, not an offline guarantee.
 3. **Desktop/mobile packaging:** Wrap this PWA with Tauri for Windows/macOS/Linux and Capacitor for Android/iOS. Native capabilities—calling, locking a phone, notifications, screen-time data, and background wake words—need platform-specific permissions, store policies, and user confirmation.
 4. **Accounts and calendar:** Use OAuth for Google Calendar, email, and messaging providers. Do not store passwords, account numbers, or secret keys in browser storage; use the platform keychain / encrypted vault.
